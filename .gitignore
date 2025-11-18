@@ -1,0 +1,11 @@
+/build/
+/dist/
+
+# Ignorar configuración privada de NetBeans
+/nbproject/private/
+
+# Ignorar archivos compilados sueltos
+*.class
+
+# --- TEMA DE LAS BASES DE DATOS (.db) ---
+*.db
