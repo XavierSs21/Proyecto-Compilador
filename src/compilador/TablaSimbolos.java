@@ -79,9 +79,10 @@ public class TablaSimbolos
         arrTabla.get( p ).setTipo( t );
     }
     
+    
     //--------------------------------------------------------------------------
     
-    public String buscaTipo( int n )
+    public String buscaTipo( int n)
     {
         return arrTabla.get( n ).getTipo( );
     }
