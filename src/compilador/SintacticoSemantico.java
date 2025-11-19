@@ -43,6 +43,23 @@ public class SintacticoSemantico {
     private Compilador cmp;
     private boolean analizarSemantica = false;
     private String preAnalisis;
+    
+    // --- Atributos para pasar información de tipo entre procedures (semántica)
+    private String tipo_expresion;                 // atributo de expresion
+    private String tipo_expresion_prima;           // atributo de expresion'
+    private String tipo_expresion_simple;          // atributo de expresion_simple
+    private String tipo_expresion_simple_prima;    // atributo de expresion_simple'
+    private String tipo_termino;                   // atributo de termino
+    private String tipo_termino_prima;             // atributo de termino'
+    private String tipo_factor;                    // atributo de factor
+    private String tipo_factor_prima;              // atributo de factor'
+
+    private static final String VACIO = "VACIO";
+    private static final String ERROR_TIPO = "ERROR_TIPO";
+    private static final String ENTERO = "ENTERO";
+    private static final String REAL = "REAL";
+    private static final String VOID = "void";
+    private static final String BOOLEANO = "BOOLEANO";
 
     //--------------------------------------------------------------------------
     // Constructor de la clase, recibe la referencia de la clase principal del 
@@ -143,8 +160,24 @@ public class SintacticoSemantico {
     private void _expresion() {
 
         if (preAnalisis.equals("oprel")) {
+            String izquierdo = tipo_expresion_simple;
             emparejar("oprel");
             expresion_simple();
+            String derecho = tipo_expresion_simple;
+            
+            //Accion 46 / 47 : oprel produce BOOLEANO si operando numéricos
+            if (analizarSemantica) {
+                if ((ENTERO.equals(izquierdo) || REAL.equals(izquierdo))
+                        && (ENTERO.equals(derecho) || REAL.equals(derecho))) {
+                    tipo_expresion_prima = BOOLEANO;
+                } else {
+                    tipo_expresion_prima = ERROR_TIPO;
+                    cmp.me.error(Compilador.ERR_SINTACTICO,
+                            "Error de tipos: operador relacional requiere operandos numéricos. Línea: " + cmp.be.preAnalisis.numLinea);
+                }
+                // Expresion final: si hay expresion' el tipo del whole es BOOLEANO o ERROR_TIPO
+                tipo_expresion = tipo_expresion_prima;
+            }
         } else {
             // expresion' → empty
         }
@@ -439,11 +472,19 @@ public class SintacticoSemantico {
 //--------------------------------------------------------------------------
 //--------------------------------------------------------------------------
 //Procedures hechos por Daniela Aldaco
+    //Acciones semanticas hechas por Yessenia Morones
     private void expresion() {
         if (preAnalisis.equals("id") || preAnalisis.equals("num")
                 || preAnalisis.equals("(") || preAnalisis.equals("num.num")) {
             expresion_simple();
             _expresion();
+            
+            //accion 45
+            if(analizarSemantica){
+                if(tipo_expresion == null){
+                    tipo_expresion = tipo_expresion_simple;
+                }
+            }
         } else {
             error("[expresion] Se esperaba inicio de expresión.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
         }
@@ -452,24 +493,60 @@ public class SintacticoSemantico {
     private void expresion_simple() {
         if (preAnalisis.equals("id") || preAnalisis.equals("num")
                 || preAnalisis.equals("(") || preAnalisis.equals("num.num")) {
+            // termino() dejará su tipo en tipo_termino
             termino();
+            // Inicialmente expresion_simple toma el tipo del termino
+            tipo_expresion_simple = tipo_termino;
+            // procesar posibles +/-
             _expresion_simple();
+            // Si _expresion_simple dejó un tipo distinto, ese es el resultado
+            // Accion 49 / 50
+            if (analizarSemantica) {
+                if (tipo_expresion_simple == null) {
+                    tipo_expresion_simple = tipo_termino; 
+                }
+            }
         } else {
             error("[expresion_simple] Se esperaba inicio de expresión simple.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
         }
     }
 
-    private void _expresion_simple() {
+     private void _expresion_simple() {
         if (preAnalisis.equals("opsuma")) {
+            // operador suma presente: opsuma termino expresion_simple’
+            // guardamos tipo izquierdo actual
+            String izquierdo = tipo_expresion_simple;
+
             emparejar("opsuma");
             termino();
+            String derecho = tipo_termino;
+
+            // combinar tipos entre izquierdo y derecho (regla 49)
+            if (analizarSemantica) {
+                String combinado = combinaTiposAritmeticos(izquierdo, derecho);
+                if (ERROR_TIPO.equals(combinado)) {
+                    tipo_expresion_simple_prima = ERROR_TIPO;
+                    tipo_expresion_simple = ERROR_TIPO;
+                    cmp.me.error(Compilador.ERR_SINTACTICO,
+                            "Error de tipos en suma/ resta. Línea: " + cmp.be.preAnalisis.numLinea);
+                } else {
+                    tipo_expresion_simple_prima = combinado;
+                    tipo_expresion_simple = combinado;
+                }
+            }
+
+            // recursión para más opsuma
             _expresion_simple();
+
         } else if (preAnalisis.equals("oprel") || preAnalisis.equals(")")
                 || preAnalisis.equals("]") || preAnalisis.equals("then")
                 || preAnalisis.equals("do") || preAnalisis.equals(";")
                 || preAnalisis.equals("end") || preAnalisis.equals("else")
                 || preAnalisis.equals(",")) {
-            // ε-producción
+            // ε-producción -> expresion_simple' := VACIO (regla 50)
+            if (analizarSemantica) {
+                if (tipo_expresion_simple_prima == null) tipo_expresion_simple_prima = VACIO;
+            }
         } else {
             error("[expresion_simple’] Se esperaba 'opsuma' o fin de expresión simple.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
         }
@@ -479,7 +556,10 @@ public class SintacticoSemantico {
         if (preAnalisis.equals("id") || preAnalisis.equals("num")
                 || preAnalisis.equals("(") || preAnalisis.equals("num.num")) {
             factor();
+            // tipo_termino inicialmente es el tipo del factor
+            tipo_termino = tipo_factor;
             _termino();
+            // si no hay parte prima, tipo_termino ya quedó en tipo_factor
         } else {
             error("[termino] Se esperaba inicio de término.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
         }
@@ -487,15 +567,37 @@ public class SintacticoSemantico {
 
     private void _termino() {
         if (preAnalisis.equals("opmult")) {
+            // opmult factor termino'
+            String izquierdo = tipo_termino;
+
             emparejar("opmult");
             factor();
-            _termino();
+            String derecho = tipo_factor;
+
+            // combinar tipos multiplicativos (regla 51/52)
+            if (analizarSemantica) {
+                String combinado = combinaTiposAritmeticos(izquierdo, derecho);
+                if (ERROR_TIPO.equals(combinado)) {
+                    tipo_termino_prima = ERROR_TIPO;
+                    tipo_termino = ERROR_TIPO;
+                    cmp.me.error(Compilador.ERR_SINTACTICO,
+                            "Error de tipos en operador multiplicativo. Línea: " + cmp.be.preAnalisis.numLinea);
+                } else {
+                    tipo_termino_prima = combinado;
+                    tipo_termino = combinado;
+                }
+            }
+
+            _termino(); // recursión
         } else if (preAnalisis.equals("opsuma") || preAnalisis.equals("oprel")
                 || preAnalisis.equals(")") || preAnalisis.equals("]")
                 || preAnalisis.equals("then") || preAnalisis.equals("do")
                 || preAnalisis.equals(";") || preAnalisis.equals("end")
                 || preAnalisis.equals("else") || preAnalisis.equals(",")) {
-            // ε-producción
+            // ε-producción -> termino' := VACIO (regla 53)
+            if (analizarSemantica) {
+                if (tipo_termino_prima == null) tipo_termino_prima = VACIO;
+            }
         } else {
             error("[termino’] Se esperaba 'opmult' o fin de término.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
         }
@@ -503,16 +605,48 @@ public class SintacticoSemantico {
 
     private void factor() {
         if (preAnalisis.equals("id")) {
+            // guardamos lexema del id antes de avanzar
+            String idLex = cmp.be.preAnalisis.lexema;
             emparejar("id");
+
+            // regla 54: buscar tipo en TS
+            if (analizarSemantica) {
+                int pos = cmp.ts.buscar(idLex);
+                if (pos > 0) {
+                    tipo_factor = cmp.ts.buscaTipo(pos); // asume que buscaTipo devuelve String del tipo
+                } else {
+                    tipo_factor = ERROR_TIPO;
+                    cmp.me.error(Compilador.ERR_SINTACTICO,
+                            "Identificador no declarado: " + idLex + ". Línea: " + cmp.be.preAnalisis.numLinea);
+                }
+            }
+
+            // factor' (posible llamada)
             _factor();
+
+            // Si factor' representó una llamada a función, la semántica de _factor puede actualizar tipo_factor
+            // (mantener lo que ya se haya fijado)
         } else if (preAnalisis.equals("num")) {
             emparejar("num");
+            // regla 55
+            if (analizarSemantica) {
+                tipo_factor = ENTERO;
+            }
         } else if (preAnalisis.equals("num.num")) {
             emparejar("num.num");  // num.num
+            // regla 56
+            if (analizarSemantica) {
+                tipo_factor = REAL;
+            }
         } else if (preAnalisis.equals("(")) {
             emparejar("(");
+            // ( expresion )
             expresion();
             emparejar(")");
+            // regla 57: factor.tipo := expresion.tipo
+            if (analizarSemantica) {
+                tipo_factor = tipo_expresion;
+            }
         } else {
             error("[factor] Se esperaba 'id', 'num' o '(' en factor.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
         }
@@ -520,16 +654,33 @@ public class SintacticoSemantico {
 
     private void _factor() {
         if (preAnalisis.equals("(")) {
+            // llamada a procedimiento/función o lista de exp
             emparejar("(");
             lista_expresiones();
             emparejar(")");
+
+            // regla 58: factor'.tipo := verificaParametros(lista_expresiones)
+            if (analizarSemantica) {
+                // Por simplicidad llamamos a un verificador que devuelve 'void' o tipo de retorno
+                // en una implementacion completa verificarías firmas en la tabla de simbolos
+                tipo_factor_prima = verificaParametros();
+                // Si la llamada representa invocación de función y devuelve un tipo,
+                // deberías asignarlo a tipo_factor (en esta plantilla dejamos tipo_factor como está
+                // salvo que quieras mapearlo a tipo_factor_prima)
+                if (!VOID.equals(tipo_factor_prima) && tipo_factor_prima != null) {
+                    tipo_factor = tipo_factor_prima;
+                }
+            }
         } else if (preAnalisis.equals("opmult") || preAnalisis.equals("opsuma")
                 || preAnalisis.equals("oprel") || preAnalisis.equals(")")
                 || preAnalisis.equals("]") || preAnalisis.equals("then")
                 || preAnalisis.equals("do") || preAnalisis.equals(";")
                 || preAnalisis.equals("end") || preAnalisis.equals("else")
                 || preAnalisis.equals(",")) {
-            // ε-producción
+            // ε-producción -> regla 59
+            if (analizarSemantica) {
+                tipo_factor_prima = VOID;
+            }
         } else {
             error("[factor’] Se esperaba '(' o fin de factor.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
         }
@@ -543,6 +694,41 @@ public class SintacticoSemantico {
         } else {
             error("[variable] Se esperaba '[' en variable.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
         }
+    }
+    
+    // -------------------- Auxiliares semánticos --------------------
+
+    /**
+     * Combina dos tipos aritméticos aplicando las reglas:
+     * ENTERO + ENTERO -> ENTERO
+     * ENTERO + REAL -> REAL
+     * REAL + ENTERO -> REAL
+     * REAL + REAL -> REAL
+     * cualquier otro caso -> ERROR_TIPO
+     */
+    private String combinaTiposAritmeticos(String a, String b) {
+        if (a == null || b == null) return ERROR_TIPO;
+        if (ERROR_TIPO.equals(a) || ERROR_TIPO.equals(b)) return ERROR_TIPO;
+
+        if (ENTERO.equals(a) && ENTERO.equals(b)) return ENTERO;
+        if (ENTERO.equals(a) && REAL.equals(b)) return REAL;
+        if (REAL.equals(a) && ENTERO.equals(b)) return REAL;
+        if (REAL.equals(a) && REAL.equals(b)) return REAL;
+        // si alguno no es numérico -> error
+        return ERROR_TIPO;
+    }
+
+    /**
+     * Verificador simple de parámetros de llamada.
+     * En una implementación completa se consultaría la firma de la función/procedimiento
+     * en la tabla de símbolos, comparando cantidad y tipos.
+     * Aquí devolvemos "void" como placeholder para llamadas a procedimiento,
+     * o podrías devolver el tipo de retorno si tu TS tiene esa info.
+     */
+    private String verificaParametros() {
+        // Implementación mínima: asumimos que la verificación pasa y la llamada es a procedimiento -> void
+        // Cambia esto cuando dispongas de las firmas de rutinas en cmp.ts
+        return VOID;
     }
 
     //--------------------------------------------------------------------------
