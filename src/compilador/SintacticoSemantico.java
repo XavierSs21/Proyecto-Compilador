@@ -327,114 +327,267 @@ public class SintacticoSemantico {
     }
 
 //Procedure hechos por Yessenia Verónica Morones Dovalí
-    private void proposicion_compuesta() {
-        //proposicion_compuesta → begin proposiciones_optativas end
-        if (preAnalisis.equals("begin")) {
-            //begin proposiciones_optativas end
-            emparejar("begin");
-            proposiciones_optativas();
-            emparejar("end");
-        } else {
-            error("[proposicion_compuesta] Se esperaba 'begin'.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
-        }
+    //acciones semanticas hechas por Daniela Lara
+    // -------------------------------------------------------------
+// proposicion_compuesta → begin proposiciones_optativas end {24}
+// -------------------------------------------------------------
+private void proposicion_compuesta() {
+
+    if (!preAnalisis.equals("begin")) {
+        error("[proposicion_compuesta] Se esperaba 'begin'.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
+        return;
     }
 
-    private void lista_proposiciones() {
-        // lista_proposiciones → proposicion lista_proposiciones’
+    emparejar("begin");
+    proposiciones_optativas();
+    emparejar("end");
+
+    // -------- Acción semántica 24 --------
+    if (analizarSemantica) {
+        tipo_expresion = VACIO;   // las proposiciones no devuelven tipo
+    }
+    // -------------------------------------
+}
+
+
+// -------------------------------------------------------------
+// lista_proposiciones → proposicion lista_proposiciones’ {27}
+// -------------------------------------------------------------
+private void lista_proposiciones() {
+
+    proposicion();
+    _lista_proposiciones();
+
+    // -------- Acción semántica 27 --------
+    if (analizarSemantica) {
+        tipo_expresion = VACIO;
+    }
+    // -------------------------------------
+}
+
+
+// -------------------------------------------------------------
+// proposicion → id proposicion’ {30}
+//              | proposicion_compuesta {32}
+//              | if expresion then proposicion else proposicion {31}
+//              | while expresion do proposicion {33}
+// -------------------------------------------------------------
+private void proposicion() {
+
+    String tipo_proposicion = VACIO; // atributo sintetizado
+
+    if (preAnalisis.equals("id")) {
+
+        emparejar("id");
+        _proposicion();
+
+        // -------- Acción 30 --------
+        if (analizarSemantica) {
+            tipo_proposicion = VACIO;
+        }
+        // ---------------------------
+
+    } else if (preAnalisis.equals("begin")) {
+
+        proposicion_compuesta();
+
+        // -------- Acción 32 --------
+        if (analizarSemantica) {
+            tipo_proposicion = VACIO;
+        }
+        // ---------------------------
+
+    } else if (preAnalisis.equals("if")) {
+
+        emparejar("if");
+        expresion();
+        String tipoCond = tipo_expresion;
+
+        emparejar("then");
         proposicion();
-        _lista_proposiciones();
+        emparejar("else");
+        proposicion();
+
+        // -------- Acción 31 --------
+        if (analizarSemantica) {
+
+            if (!tipoCond.equals(BOOLEANO)) {
+                System.out.println("ERROR SEMÁNTICO: La condición del IF debe ser booleana.");
+                tipo_proposicion = ERROR_TIPO;
+            } else {
+                tipo_proposicion = VACIO;
+            }
+
+        }
+        // ---------------------------
+
+    } else if (preAnalisis.equals("while")) {
+
+        emparejar("while");
+        expresion();
+        String tipoCond = tipo_expresion;
+
+        emparejar("do");
+        proposicion();
+
+        // -------- Acción 33 --------
+        if (analizarSemantica) {
+
+            if (!tipoCond.equals(BOOLEANO)) {
+                System.out.println("ERROR SEMÁNTICO: La condición del WHILE debe ser booleana.");
+                tipo_proposicion = ERROR_TIPO;
+            } else {
+                tipo_proposicion = VACIO;
+            }
+        }
+        // ---------------------------
+
+    } else {
+        error("[proposicion] Se esperaba 'id', 'begin', 'if' o 'while'.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
     }
 
-    private void proposicion() {
-        // proposicion → id proposicion’ 
-        //             | poposicion_compuesta
-        //             | if expresion then proposicion else proposicion
-        //             | while expresion do proposicion
-        if (preAnalisis.equals("id")) {
-            // proposicion → id proposicion’ 
-            emparejar("id");
-            _proposicion();
-        } else if (preAnalisis.equals("begin")) {
-            // proposicion → proposicion_compuesta
-            proposicion_compuesta();
-        } else if (preAnalisis.equals("if")) {
-            // proposicion → if expresion then proposicion else proposicion
-            emparejar("if");
-            expresion();
-            emparejar("then");
-            proposicion();
-            emparejar("else");
-            proposicion();
-        } else if (preAnalisis.equals("while")) {
-            // proposicion → while expresion do proposicion
-            emparejar("while");
-            expresion();
-            emparejar("do");
-            proposicion();
-        } else {
-            error("[proposicion] Se esperaba 'id', 'begin', 'if' o 'while'.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
+    tipo_expresion = tipo_proposicion;
+}
+
+
+// -------------------------------------------------------------
+// proposicion’ → variable opasig expresion {34}
+//               | opasig expresion
+//               | proposicion_procedimiento
+//               | ε
+// -------------------------------------------------------------
+private void _proposicion() {
+
+    if (preAnalisis.equals("[")) {
+
+        variable();                 // tipo queda en tipo_factor
+        String tipoVar = tipo_factor;
+
+        emparejar("opasig");
+        expresion();
+        String tipoExp = tipo_expresion;
+
+        // -------- Acción 34 --------
+        if (analizarSemantica) {
+
+            if (tipoVar.equals(ERROR_TIPO) || tipoExp.equals(ERROR_TIPO)) {
+                tipo_expresion = ERROR_TIPO;
+            }
+            else if ((tipoVar.equals(ENTERO) && tipoExp.equals(ENTERO)) ||
+                     (tipoVar.equals(REAL) && (tipoExp.equals(ENTERO) || tipoExp.equals(REAL))) ||
+                     (tipoVar.equals(BOOLEANO) && tipoExp.equals(BOOLEANO))) {
+
+                tipo_expresion = VACIO;
+            }
+            else {
+                System.out.println("ERROR SEMÁNTICO: Tipos incompatibles en la asignación.");
+                tipo_expresion = ERROR_TIPO;
+            }
+        }
+        // ----------------------------
+
+    } else if (preAnalisis.equals("opasig")) {
+
+        emparejar("opasig");
+        expresion();
+
+        if (analizarSemantica) {
+            tipo_expresion = VACIO;
+        }
+
+    } else if (preAnalisis.equals("(")) {
+
+        proposicion_procedimiento();
+
+        // -------- Acción 39 --------
+        if (analizarSemantica) {
+            tipo_expresion = VOID;
+        }
+        // ---------------------------
+
+    } else {
+        // ε
+        if (analizarSemantica)
+            tipo_expresion = VACIO;
+    }
+}
+
+
+// -------------------------------------------------------------
+// proposicion_procedimiento → proposicion_procedimiento’ {39}
+// -------------------------------------------------------------
+private void proposicion_procedimiento() {
+
+    _proposicion_procedimiento();
+
+    if (analizarSemantica) {
+        tipo_expresion = VOID; // las llamadas no producen valor
+    }
+}
+
+
+// -------------------------------------------------------------
+// proposicion_procedimiento’ → ( lista_expresiones ) {40} | ϵ {41}
+// -------------------------------------------------------------
+private void _proposicion_procedimiento() {
+
+    if (preAnalisis.equals("(")) {
+
+        emparejar("(");
+        lista_expresiones();
+        emparejar(")");
+
+        // acción 40
+        if (analizarSemantica) {
+            tipo_expresion = VOID;
+        }
+
+    } else {
+        // ε → acción 41
+        if (analizarSemantica) {
+            tipo_expresion = VOID;
         }
     }
+}
 
-    private void _proposicion() {
-        // proposicion’ → variable opasig expresion
-        //              | opasig Expresion
-        //              | Proposicion_Procedimiento
-        //              | ε
-        if (preAnalisis.equals("[")) {
-            //proposicion’ → variable opasig expresion
-            variable();
-            emparejar("opasig");
-            expresion();
-        } else if (preAnalisis.equals("opasig")) {
-            //proposicion’ → opasig expresion
-            emparejar("opasig");
-            expresion();
-        } else if (preAnalisis.equals("(")) {
-            //proposicion’ → proposicion_procedimiento
-            proposicion_procedimiento();
-        } else {
-            //proposicion’ → ε
+
+// -------------------------------------------------------------
+// lista_expresiones → expresion lista_expresiones’ {42}
+// -------------------------------------------------------------
+private void lista_expresiones() {
+
+    expresion();
+    _lista_expresiones();
+
+    if (analizarSemantica) {
+        // acción 42
+        tipo_expresion = tipo_expresion;
+    }
+}
+
+
+// -------------------------------------------------------------
+// lista_expresiones’ → , lista_expresiones {43} | ε {44}
+// -------------------------------------------------------------
+private void _lista_expresiones() {
+
+    if (preAnalisis.equals(",")) {
+
+        emparejar(",");
+        lista_expresiones();
+
+        if (analizarSemantica) {
+            // acción 43
+            tipo_expresion = tipo_expresion;
+        }
+
+    } else {
+        // ε → acción 44
+        if (analizarSemantica) {
+            tipo_expresion = VACIO;
         }
     }
-
-    private void proposicion_procedimiento() {
-        //proposicion_procedimiento → proposicion_procedimiento’
-        _proposicion_procedimiento();
-    }
-
-    private void _proposicion_procedimiento() {
-        //proposicion_procedimiento’ → ( lista_expresiones )  | ϵ
-        if (preAnalisis.equals("(")) {
-            emparejar("(");
-            lista_expresiones();
-            emparejar(")");
-        } else {
-            //proposicion_procedimiento’ → ϵ
-        }
-    }
-
-    private void lista_expresiones() {
-        // lista_expresiones → expresion lista_expresiones´
-        if (preAnalisis.equals("id") || preAnalisis.equals("num") || preAnalisis.equals("(")) {
-            // expresion lista_expresiones´
-            expresion();
-            _lista_expresiones();
-        } else {
-            error("[lista_expresiones] Se esperaba expresión.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
-        }
-    }
-
-    private void _lista_expresiones() {
-        // lista_expresiones’ → , lista_expresiones | ε
-        if (preAnalisis.equals(",")) {
-            // , lista_expresiones
-            emparejar(",");
-            lista_expresiones();
-        } else {
-            // ε
-        }
-    }
+}
 
 //--------------------------------------------------------------------------
 //--------------------------------------------------------------------------
