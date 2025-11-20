@@ -328,264 +328,260 @@ public class SintacticoSemantico {
 
 //Procedure hechos por Yessenia Verónica Morones Dovalí
     //acciones semanticas hechas por Daniela Lara
-    // -------------------------------------------------------------
-// proposicion_compuesta → begin proposiciones_optativas end {24}
-// -------------------------------------------------------------
-private void proposicion_compuesta() {
+private void proposicion_compuesta(Atributos prop) {
+    Atributos propsOpt = new Atributos();
 
     if (!preAnalisis.equals("begin")) {
-        error("[proposicion_compuesta] Se esperaba 'begin'.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
+        error("Se esperaba 'begin'. Línea: " + cmp.be.preAnalisis.numLinea);
+        prop.tipo = ERROR_TIPO;
         return;
     }
 
     emparejar("begin");
-    proposiciones_optativas();
+    proposiciones_optativas(propsOpt);
     emparejar("end");
 
-    // -------- Acción semántica 24 --------
+    // accion semantica 1
     if (analizarSemantica) {
-        tipo_expresion = VACIO;   // las proposiciones no devuelven tipo
+        prop.tipo = propsOpt.tipo.equals(ERROR_TIPO) ? ERROR_TIPO : VACIO;
     }
-    // -------------------------------------
 }
 
-
 // -------------------------------------------------------------
-// lista_proposiciones → proposicion lista_proposiciones’ {27}
+// lista_proposiciones → proposicion lista_proposiciones’
 // -------------------------------------------------------------
-private void lista_proposiciones() {
+private void lista_proposiciones(Atributos lista) {
+    Atributos p = new Atributos();
+    Atributos lp2 = new Atributos();
 
-    proposicion();
-    _lista_proposiciones();
+    proposicion(p);
+    _lista_proposiciones(lp2);
 
-    // -------- Acción semántica 27 --------
+    // accion semantica 2
     if (analizarSemantica) {
-        tipo_expresion = VACIO;
+        if (p.tipo.equals(ERROR_TIPO) || lp2.tipo.equals(ERROR_TIPO))
+            lista.tipo = ERROR_TIPO;
+        else
+            lista.tipo = VACIO;
     }
-    // -------------------------------------
 }
 
+// -------------------------------------------------------------
+// lista_proposiciones' → ; lista_proposiciones | ε
+// -------------------------------------------------------------
+private void _lista_proposiciones(Atributos lista2) {
+
+    if (preAnalisis.equals(";")) {
+        emparejar(";");
+        lista_proposiciones(lista2);
+    }
+    else {
+        lista2.tipo = VACIO; // ε
+    }
+}
 
 // -------------------------------------------------------------
-// proposicion → id proposicion’ {30}
-//              | proposicion_compuesta {32}
-//              | if expresion then proposicion else proposicion {31}
-//              | while expresion do proposicion {33}
+// proposicion
 // -------------------------------------------------------------
-private void proposicion() {
-
-    String tipo_proposicion = VACIO; // atributo sintetizado
+private void proposicion(Atributos prop) {
+    Atributos e = new Atributos();
+    Atributos p1 = new Atributos();
+    Atributos p2 = new Atributos();
 
     if (preAnalisis.equals("id")) {
 
+        Linea_BE id = cmp.be.preAnalisis;
         emparejar("id");
-        _proposicion();
 
-        // -------- Acción 30 --------
-        if (analizarSemantica) {
-            tipo_proposicion = VACIO;
-        }
-        // ---------------------------
+        _proposicion(id, prop);
+        return;
+    }
+    else if (preAnalisis.equals("begin")) {
 
-    } else if (preAnalisis.equals("begin")) {
-
-        proposicion_compuesta();
-
-        // -------- Acción 32 --------
-        if (analizarSemantica) {
-            tipo_proposicion = VACIO;
-        }
-        // ---------------------------
-
-    } else if (preAnalisis.equals("if")) {
+        proposicion_compuesta(prop);
+        return;
+    }
+    else if (preAnalisis.equals("if")) {
 
         emparejar("if");
-        expresion();
-        String tipoCond = tipo_expresion;
+        expresion(e);
 
         emparejar("then");
-        proposicion();
+        proposicion(p1);
+
         emparejar("else");
-        proposicion();
+        proposicion(p2);
 
-        // -------- Acción 31 --------
+        // accion semantica 3
         if (analizarSemantica) {
-
-            if (!tipoCond.equals(BOOLEANO)) {
-                System.out.println("ERROR SEMÁNTICO: La condición del IF debe ser booleana.");
-                tipo_proposicion = ERROR_TIPO;
-            } else {
-                tipo_proposicion = VACIO;
+            if (!e.tipo.equals(BOOLEAN)) {
+                cmp.me.error(cmp.ERR_SEMANTICO,
+                    "La condición de IF debe ser booleana. Línea: " +
+                    cmp.be.preAnalisis.numLinea);
+                prop.tipo = ERROR_TIPO;
             }
-
+            else if (p1.tipo.equals(ERROR_TIPO) || p2.tipo.equals(ERROR_TIPO)) {
+                prop.tipo = ERROR_TIPO;
+            }
+            else {
+                prop.tipo = VACIO;
+            }
         }
-        // ---------------------------
-
-    } else if (preAnalisis.equals("while")) {
+        return;
+    }
+    else if (preAnalisis.equals("while")) {
 
         emparejar("while");
-        expresion();
-        String tipoCond = tipo_expresion;
+        expresion(e);
 
         emparejar("do");
-        proposicion();
+        proposicion(p1);
 
-        // -------- Acción 33 --------
+        // accion semantica 4
         if (analizarSemantica) {
 
-            if (!tipoCond.equals(BOOLEANO)) {
-                System.out.println("ERROR SEMÁNTICO: La condición del WHILE debe ser booleana.");
-                tipo_proposicion = ERROR_TIPO;
-            } else {
-                tipo_proposicion = VACIO;
+            if (!e.tipo.equals(BOOLEAN)) {
+                cmp.me.error(cmp.ERR_SEMANTICO,
+                    "La condición de WHILE debe ser booleana.");
+                prop.tipo = ERROR_TIPO;
+            }
+            else if (p1.tipo.equals(ERROR_TIPO)) {
+                prop.tipo = ERROR_TIPO;
+            }
+            else {
+                prop.tipo = VACIO;
             }
         }
-        // ---------------------------
-
-    } else {
-        error("[proposicion] Se esperaba 'id', 'begin', 'if' o 'while'.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
+        return;
     }
 
-    tipo_expresion = tipo_proposicion;
+    error("Se esperaba 'id', 'begin', 'if' o 'while'. Línea: " +
+          cmp.be.preAnalisis.numLinea);
+    prop.tipo = ERROR_TIPO;
 }
 
-
 // -------------------------------------------------------------
-// proposicion’ → variable opasig expresion {34}
-//               | opasig expresion
-//               | proposicion_procedimiento
-//               | ε
+// proposicion'  
 // -------------------------------------------------------------
-private void _proposicion() {
+private void _proposicion(Linea_BE id, Atributos prop) {
 
-    if (preAnalisis.equals("[")) {
+    // ---------------------------------------
+    // variable opasig expresion
+    // ---------------------------------------
+    if (preAnalisis.equals("[") || preAnalisis.equals("opasig")) {
 
-        variable();                 // tipo queda en tipo_factor
-        String tipoVar = tipo_factor;
+        Atributos var = new Atributos();
+        Atributos e = new Atributos();
+
+        variable(id, var);
+        String tipoVar = var.tipo;
 
         emparejar("opasig");
-        expresion();
-        String tipoExp = tipo_expresion;
+        expresion(e);
+        String tipoExp = e.tipo;
 
-        // -------- Acción 34 --------
+        // accion semantica 5
         if (analizarSemantica) {
 
             if (tipoVar.equals(ERROR_TIPO) || tipoExp.equals(ERROR_TIPO)) {
-                tipo_expresion = ERROR_TIPO;
+                prop.tipo = ERROR_TIPO;
             }
-            else if ((tipoVar.equals(ENTERO) && tipoExp.equals(ENTERO)) ||
-                     (tipoVar.equals(REAL) && (tipoExp.equals(ENTERO) || tipoExp.equals(REAL))) ||
-                     (tipoVar.equals(BOOLEANO) && tipoExp.equals(BOOLEANO))) {
-
-                tipo_expresion = VACIO;
+            else if (tipoVar.equals(INTEGER) && tipoExp.equals(INTEGER)) {
+                prop.tipo = VACIO;
+            }
+            else if (tipoVar.equals(REAL) &&
+                    (tipoExp.equals(INTEGER) || tipoExp.equals(REAL))) {
+                prop.tipo = VACIO;
+            }
+            else if (tipoVar.equals(BOOLEAN) && tipoExp.equals(BOOLEAN)) {
+                prop.tipo = VACIO;
             }
             else {
-                System.out.println("ERROR SEMÁNTICO: Tipos incompatibles en la asignación.");
-                tipo_expresion = ERROR_TIPO;
+                cmp.me.error(cmp.ERR_SEMANTICO,
+                    "Tipos incompatibles en asignación. Línea: " +
+                    cmp.be.preAnalisis.numLinea);
+                prop.tipo = ERROR_TIPO;
             }
         }
-        // ----------------------------
-
-    } else if (preAnalisis.equals("opasig")) {
-
-        emparejar("opasig");
-        expresion();
-
-        if (analizarSemantica) {
-            tipo_expresion = VACIO;
-        }
-
-    } else if (preAnalisis.equals("(")) {
-
-        proposicion_procedimiento();
-
-        // -------- Acción 39 --------
-        if (analizarSemantica) {
-            tipo_expresion = VOID;
-        }
-        // ---------------------------
-
-    } else {
-        // ε
-        if (analizarSemantica)
-            tipo_expresion = VACIO;
+        return;
     }
+
+    // ---------------------------------------
+    // llamada a procedimiento
+    // ---------------------------------------
+    if (preAnalisis.equals("(")) {
+        proposicion_procedimiento(prop);
+        return;
+    }
+
+    // ε
+    prop.tipo = VACIO;
 }
 
-
 // -------------------------------------------------------------
-// proposicion_procedimiento → proposicion_procedimiento’ {39}
+// proposicion_procedimiento
 // -------------------------------------------------------------
-private void proposicion_procedimiento() {
+private void proposicion_procedimiento(Atributos prop) {
+    Atributos args = new Atributos();
 
-    _proposicion_procedimiento();
+    _proposicion_procedimiento(args);
 
+    // accion semantica 6
     if (analizarSemantica) {
-        tipo_expresion = VOID; // las llamadas no producen valor
+        prop.tipo = args.tipo.equals(ERROR_TIPO) ? ERROR_TIPO : VACIO;
     }
 }
 
-
 // -------------------------------------------------------------
-// proposicion_procedimiento’ → ( lista_expresiones ) {40} | ϵ {41}
+// proposicion_procedimiento'
 // -------------------------------------------------------------
-private void _proposicion_procedimiento() {
+private void _proposicion_procedimiento(Atributos prop) {
 
     if (preAnalisis.equals("(")) {
-
         emparejar("(");
-        lista_expresiones();
+
+        Atributos lista = new Atributos();
+        lista_expresiones(lista);
+
         emparejar(")");
 
-        // acción 40
-        if (analizarSemantica) {
-            tipo_expresion = VOID;
-        }
-
-    } else {
-        // ε → acción 41
-        if (analizarSemantica) {
-            tipo_expresion = VOID;
-        }
+        prop.tipo = lista.tipo;
+    }
+    else {
+        prop.tipo = VACIO; // ε
     }
 }
 
-
 // -------------------------------------------------------------
-// lista_expresiones → expresion lista_expresiones’ {42}
+// lista_expresiones
 // -------------------------------------------------------------
-private void lista_expresiones() {
+private void lista_expresiones(Atributos lista) {
+    Atributos e = new Atributos();
+    Atributos resto = new Atributos();
 
-    expresion();
-    _lista_expresiones();
+    expresion(e);
+    _lista_expresiones(resto);
 
+    // accion semantica 7
     if (analizarSemantica) {
-        // acción 42
-        tipo_expresion = tipo_expresion;
+        if (e.tipo.equals(ERROR_TIPO) || resto.tipo.equals(ERROR_TIPO))
+            lista.tipo = ERROR_TIPO;
+        else
+            lista.tipo = VACIO;
     }
 }
 
-
 // -------------------------------------------------------------
-// lista_expresiones’ → , lista_expresiones {43} | ε {44}
+// lista_expresiones'
 // -------------------------------------------------------------
-private void _lista_expresiones() {
+private void _lista_expresiones(Atributos lista2) {
 
     if (preAnalisis.equals(",")) {
-
         emparejar(",");
-        lista_expresiones();
-
-        if (analizarSemantica) {
-            // acción 43
-            tipo_expresion = tipo_expresion;
-        }
-
-    } else {
-        // ε → acción 44
-        if (analizarSemantica) {
-            tipo_expresion = VACIO;
-        }
+        lista_expresiones(lista2);
+    }
+    else {
+        lista2.tipo = VACIO; // ε
     }
 }
 
