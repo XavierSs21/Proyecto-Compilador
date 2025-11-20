@@ -32,35 +32,28 @@
  */
 package compilador;
 
+import general.Linea_BE;
 import general.Linea_TS;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import javax.swing.JOptionPane;
 
+
 public class SintacticoSemantico {
+    
+    public static final String VACIO      = "vacio";
+    public static final String ERROR_TIPO = "error_tipo";
+    
+    private java.util.List<String> lista_entradas_id = new java.util.ArrayList<>();
+
 
     private Compilador cmp;
     private boolean analizarSemantica = false;
     private String preAnalisis;
+
+
     
-    // --- Atributos para pasar información de tipo entre procedures (semántica)
-    private String tipo_expresion;                 // atributo de expresion
-    private String tipo_expresion_prima;           // atributo de expresion'
-    private String tipo_expresion_simple;          // atributo de expresion_simple
-    private String tipo_expresion_simple_prima;    // atributo de expresion_simple'
-    private String tipo_termino;                   // atributo de termino
-    private String tipo_termino_prima;             // atributo de termino'
-    private String tipo_factor;                    // atributo de factor
-    private String tipo_factor_prima;              // atributo de factor'
-
-    private static final String VACIO = "VACIO";
-    private static final String ERROR_TIPO = "ERROR_TIPO";
-    private static final String ENTERO = "ENTERO";
-    private static final String REAL = "REAL";
-    private static final String VOID = "void";
-    private static final String BOOLEANO = "BOOLEANO";
-
     //--------------------------------------------------------------------------
     // Constructor de la clase, recibe la referencia de la clase principal del 
     // compilador.
@@ -76,127 +69,270 @@ public class SintacticoSemantico {
     //                     false= realiza solo el analisis sintactico sin comprobacion semantica
     public void analizar(boolean analizarSemantica) {
         this.analizarSemantica = analizarSemantica;
-        preAnalisis = cmp.be.preAnalisis.complex;
 
-        // * * *   INVOCAR AQUI EL PROCEDURE DEL SIMBOLO INICIAL   * * *
-        //P();
-        programa();
-    }
+        Atributos atrPrograma = new Atributos();
+        P(atrPrograma);
+
+        if (analizarSemantica) {
+            if (atrPrograma.tipo.equals(VACIO)) {
+                System.out.println("Programa.tipo = VACIO");
+            } else {
+                System.out.println("Programa.tipo = ERROR_TIPO");
+            }
+        }
+}
+
 
     //--------------------------------------------------------------------------
     // Procedures hechos por Xavier
-    private void _lista_identificadores() {
+    private void _lista_identificadores(Atributos listaPrima) {
 
-        if (preAnalisis.equals(",")) {
-            emparejar(",");
-            emparejar("id");
-            _lista_identificadores();
-        } else {
-            // lista_identificadores' → empty
+    if (preAnalisis.equals(",")) {
+
+        emparejar(",");
+        Linea_BE idActual = cmp.be.preAnalisis;
+        emparejar("id");
+
+        // ===== AS7 ==========================================
+        if (analizarSemantica) {
+            lista_entradas_id.add(idActual.lexema); // agrega el id
         }
 
-    }
+        // Llamar recursivamente
+        Atributos listaPrima2 = new Atributos();
+        _lista_identificadores(listaPrima2);
 
-    private void declaraciones() {
-
-        if (preAnalisis.equals("var")) {
-            emparejar("var");
-            lista_identificadores();
-            emparejar(":");
-            tipo();
-            emparejar(";");
-            declaraciones();
-        } else {
-            // declaraciones → empty
+        // ===== AS61 ==========================================
+        if (analizarSemantica) {
+            listaPrima.tipo = listaPrima2.tipo;
         }
 
+    } 
+    
+    else {
+        // ===== AS62 ==========================================
+        if (analizarSemantica) {
+            listaPrima.tipo = VACIO;
+        }
+    }
+}
+
+
+       private void declaraciones(Atributos declaraciones) {
+
+    // ----------- CASO ε (AS3) -----------------
+    if (!preAnalisis.equals("var")) {
+        if (analizarSemantica) {
+            declaraciones.tipo = VACIO;   // AS3
+        }
+        return;
     }
 
-    private void tipo_estandar() {
+    // ----------- CASO  var lista_identificadores : tipo ; declaraciones -----------
+    emparejar("var");
+
+    // atributos auxiliares
+    Atributos lista = new Atributos();
+    Atributos tipo  = new Atributos();
+    Atributos declaraciones1 = new Atributos();
+
+    // ===== lista_identificadores =====
+    lista_identificadores(lista);
+
+    emparejar(":");
+
+    // ===== tipo =====
+    tipo(tipo);
+
+    // =================== AS4 ===================
+    if (analizarSemantica) {
+
+        declaraciones.tipoAux = VACIO; // bandera
+
+        for (String entrada : lista_entradas_id) {
+
+            int pos = cmp.ts.buscar(entrada);  
+            String tipoExistente = (pos > 0) ? cmp.ts.buscaTipo(pos) : "";
+
+            if (tipoExistente == null || tipoExistente.isEmpty()) {
+
+                // ----------- NO EXISTE → insertar primero -----------
+                Linea_TS nueva = new Linea_TS(
+                    "id",
+                    entrada,
+                    "",      // tipo vacío
+                    ""       // ambito vacío
+                );
+
+                pos = cmp.ts.insertar(nueva); // ahora sí existe
+
+                // ----------- ASIGNAR TIPO CORRECTAMENTE -----------
+                cmp.ts.anadeTipo(pos, tipo.tipo);
+
+            } else {
+
+                // ya estaba declarado → ERROR
+                declaraciones.tipoAux = ERROR_TIPO;
+
+                cmp.me.error(
+                    Compilador.ERR_SEMANTICO,
+                    "[declaraciones] Identificador ya declarado: " + entrada
+                );
+            }
+        }
+
+        lista_entradas_id.clear();  // limpiar la lista
+    }
+
+    emparejar(";");
+
+    // ===== declaraciones1 =====
+    declaraciones(declaraciones1);
+
+    // =================== AS5 ===================
+    if (analizarSemantica) {
+        if (declaraciones.tipoAux.equals(VACIO)
+                && declaraciones1.tipo.equals(VACIO)) {
+
+            declaraciones.tipo = VACIO;
+
+        } else {
+            declaraciones.tipo = ERROR_TIPO;
+        }
+    }
+}
+
+
+        private void tipo_estandar(Atributos te) {
 
         if (preAnalisis.equals("integer")) {
             emparejar("integer");
-        } else if (preAnalisis.equals("real")) {
+            if (analizarSemantica) te.tipo = "integer";   // AS10
+        }
+        else if (preAnalisis.equals("real")) {
             emparejar("real");
-        } else {
-            error("[tipo_estandar] Se esperaba 'integer' o 'real'.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
+            if (analizarSemantica) te.tipo = "real";      // AS11
+        }
+        else {
+            error("[tipo_estandar] Se esperaba integer o real.");
         }
     }
 
-    private void declaraciones_subprogramas() {
+    
 
-        if (preAnalisis.equals("function") || preAnalisis.equals("procedure")) {
-            _declaraciones_subprogramas();
-        } else {
-            // declaraciones_subprogramas → empty
+        private void declaraciones_subprogramas(Atributos dsp) {
+
+        // ======== caso ε ========  (AS13)
+        if (!preAnalisis.equals("function") && !preAnalisis.equals("procedure")) {
+            if (analizarSemantica) {
+                dsp.tipo = VACIO;   // AS13
+            }
+            return;
         }
+        Atributos dspPrima = new Atributos();
+        _declaraciones_subprogramas(dspPrima);
 
+        // AS12
+        if (analizarSemantica) {
+            dsp.tipo = dspPrima.tipo;
+        }
     }
 
-    private void _declaraciones_subprogramas() {
 
-        if (preAnalisis.equals("function") || preAnalisis.equals("procedure")) {
-            declaracion_subprograma();
-            emparejar(";");
-            _declaraciones_subprogramas();
-        } else {
-            // declaraciones_subprogramas' → empty
+    private void _lista_proposiciones(Atributos listaPrima) {
+
+    // ===== caso ; proposicion lista_proposiciones' =====
+    if (preAnalisis.equals(";")) {
+
+        emparejar(";");
+
+        Atributos prop = new Atributos();
+        Atributos listaPrima2 = new Atributos();
+
+        proposicion(prop);
+        _lista_proposiciones(listaPrima2);
+
+        // NO TIENE AS explícito pero para que funcione con AS27:
+        if (analizarSemantica) {
+
+            if (prop.tipo.equals(VACIO) && listaPrima2.tipo.equals(VACIO)) {
+                listaPrima.tipo = VACIO;
+            } else {
+                listaPrima.tipo = ERROR_TIPO;
+            }
         }
 
+        return;
     }
 
-    private void _lista_proposiciones() {
+    // ===== caso ε =====
+    if (analizarSemantica)
+        listaPrima.tipo = VACIO;  // porque ε no produce nada
+}
 
-        if (preAnalisis.equals(";")) {
-            emparejar(";");
-            proposicion();
-            _lista_proposiciones();
-        } else {
-            // lista_proposiones' → empty
-        }
 
-    }
-
-    private void _expresion() {
+    private void _expresion(Atributos expresionPrima) {
+        Atributos expSimple = new Atributos();
 
         if (preAnalisis.equals("oprel")) {
-            String izquierdo = tipo_expresion_simple;
             emparejar("oprel");
-            expresion_simple();
-            String derecho = tipo_expresion_simple;
-            
-            //Accion 46 / 47 : oprel produce BOOLEANO si operando numéricos
+            expresion_simple(expSimple);
+
+            // ==================== AS46 =====================
             if (analizarSemantica) {
-                if ((ENTERO.equals(izquierdo) || REAL.equals(izquierdo))
-                        && (ENTERO.equals(derecho) || REAL.equals(derecho))) {
-                    tipo_expresion_prima = BOOLEANO;
+                String tipoIzquierdo = expresionPrima.h;
+                String tipoDerecho = expSimple.tipo;
+
+                if (tipoIzquierdo.equals("integer") && tipoDerecho.equals("integer")) {
+                    expresionPrima.tipo = "integer";
+                } else if ((tipoIzquierdo.equals("integer") && tipoDerecho.equals("real"))
+                        || (tipoIzquierdo.equals("real") && tipoDerecho.equals("integer"))
+                        || (tipoIzquierdo.equals("real") && tipoDerecho.equals("real"))) {
+                    expresionPrima.tipo = "real";
                 } else {
-                    tipo_expresion_prima = ERROR_TIPO;
-                    cmp.me.error(Compilador.ERR_SINTACTICO,
-                            "Error de tipos: operador relacional requiere operandos numéricos. Línea: " + cmp.be.preAnalisis.numLinea);
+                    expresionPrima.tipo = ERROR_TIPO;
+                    cmp.me.error(Compilador.ERR_SEMANTICO,
+                            "[expresion'] Error de tipos en operacion relacional: "
+                            + tipoIzquierdo + " y " + tipoDerecho);
                 }
-                // Expresion final: si hay expresion' el tipo del whole es BOOLEANO o ERROR_TIPO
-                tipo_expresion = tipo_expresion_prima;
             }
         } else {
             // expresion' → empty
+            if (analizarSemantica) {
+                // ==================== AS47 =====================
+                expresionPrima.tipo = VACIO;
+            }
         }
 
     }
 
-    private void proposiciones_optativas() {
-        if (preAnalisis.equals("begin")
-                || preAnalisis.equals("id")
-                || preAnalisis.equals("if")
-                || preAnalisis.equals("while")) {
+        private void proposiciones_optativas(Atributos propOpt) {
 
-            // proposiciones_optativas → lista_proposiciones
-            lista_proposiciones();
-        } else {
-            // proposiciones_optativas → ε
-            // empty
+        // ======== CASO lista_proposiciones  =========
+        if (preAnalisis.equals("id")
+            || preAnalisis.equals("begin")
+            || preAnalisis.equals("if")
+            || preAnalisis.equals("while")) {
+
+            Atributos lista = new Atributos();
+
+            lista_proposiciones(lista);
+
+            // ---------- AS25 ----------
+            if (analizarSemantica) {
+                propOpt.tipo = lista.tipo;
+            }
+
+            return;
+        }
+
+        // ========= CASO ε ============
+        // AS26
+        if (analizarSemantica) {
+            propOpt.tipo = "void";    // O así te lo pidieron textual
         }
     }
+
 
 //--------------------------------------------------------------------------
 //--------------------------------------------------------------------------
@@ -205,180 +341,465 @@ public class SintacticoSemantico {
      * programa → program id ( input , output ) ; declaraciones
      * declaraciones_subprogramas proposicion_compuesta .
      */
-    private void programa() {
-        if (preAnalisis.equals("program")) {
-            // program id ( input , output ) ;
-            emparejar("program");
+   private void programa(Atributos Programa) {
 
-            if (preAnalisis.equals("id")) {
-                emparejar("id");
-            } else {
-                error("[programa] Se esperaba identificador después de 'program'.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
-                return;
-            }
+    Atributos declaracionesAtr = new Atributos();
+    Atributos declaracionesSubAtr = new Atributos();
+    Atributos propCompuestaAtr = new Atributos();
 
-            emparejar("(");
+    String nombrePrograma = "";
 
-            if (preAnalisis.equals("input")) {
-                emparejar("input");
-            } else {
-                error("[programa] Se esperaba 'input'.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
-                return;
-            }
+    if (preAnalisis.equals("program")) {
 
-            emparejar(",");
+        emparejar("program");
 
-            if (preAnalisis.equals("output")) {
-                emparejar("output");
-            } else {
-                error("[programa] Se esperaba 'output'.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
-                return;
-            }
-
-            emparejar(")");
-            emparejar(";");
-
-            // declaraciones
-            declaraciones();
-
-            // declaraciones_subprogramas
-            declaraciones_subprogramas();
-
-            // proposicion_compuesta
-            proposicion_compuesta();
-
-            // . (punto final del programa)
-            if (preAnalisis.equals(".")) {
-                emparejar(".");
-            } else {
-                error("[programa] Se esperaba '.' al final del programa.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
-            }
-
-        } else {
-            error("[programa] Se esperaba 'program' al inicio del programa.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
-        }
-    }
-
-    private void lista_identificadores() {
+        // === Guardar ID del programa ===
         if (preAnalisis.equals("id")) {
+            nombrePrograma = cmp.be.preAnalisis.lexema;
             emparejar("id");
-            _lista_identificadores();
         } else {
-            error("[lista_identificadores] Se esperaba identificador.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
+            error("[programa] Se esperaba identificador después de 'program'.\nLínea: "
+                    + cmp.be.preAnalisis.numLinea);
+            return;
+        }
+
+        emparejar("(");
+        emparejar("input");
+        emparejar(",");
+        emparejar("output");
+        emparejar(")");
+        emparejar(";");
+
+        declaraciones(declaracionesAtr);
+        declaraciones_subprogramas(declaracionesSubAtr);
+        proposicion_compuesta(propCompuestaAtr);
+
+        emparejar(".");
+
+    } else {
+        error("[programa] Se esperaba 'program'. Línea: " + cmp.be.preAnalisis.numLinea);
+        return;
+    }
+
+    // ============================ AS1 ============================
+    if (analizarSemantica) {
+
+        int pos = cmp.ts.buscar(nombrePrograma);
+
+        if (pos > 0) {
+            // Ya existe → solo asignamos tipo si no tiene
+            cmp.ts.anadeTipo(pos, "program");
+        } else {
+            // No existe → se inserta y luego se asigna tipo
+            Linea_TS nueva = new Linea_TS(
+                    "id",
+                    nombrePrograma,
+                    "",
+                    ""                  // ambito vacío
+            );
+            pos = cmp.ts.insertar(nueva);
+            cmp.ts.anadeTipo(pos, "program");
+        }
+    }
+    // =============================================================
+
+    // ============================ AS2 ============================
+    if (analizarSemantica) {
+        if (declaracionesAtr.tipo.equals(VACIO) &&
+            declaracionesSubAtr.tipo.equals(VACIO) &&
+            propCompuestaAtr.tipo.equals(VACIO)) {
+
+            Programa.tipo = VACIO;
+
+        } else {
+            Programa.tipo = ERROR_TIPO;
+            cmp.me.error(Compilador.ERR_SEMANTICO,
+                    "[programa] El programa contiene errores de tipo.");
+        }
+    }
+    // =============================================================
+}
+
+
+    private void lista_identificadores(Atributos lista) {
+
+    Atributos listaPrima = new Atributos();
+
+    Linea_BE idActual = cmp.be.preAnalisis;
+
+    if (preAnalisis.equals("id")) {
+
+        emparejar("id");
+
+        // ===== AS6 ==========================================
+        if (analizarSemantica) {
+            lista_entradas_id.add(idActual.lexema);  
+        }
+
+        // Llamar a la parte prima
+        _lista_identificadores(listaPrima);
+
+        // ===== AS60 ==========================================
+        if (analizarSemantica) {
+            lista.tipo = listaPrima.tipo;
+        }
+
+    } else {
+        error("[lista_identificadores] Se esperaba un identificador.");
+    }
+}
+
+
+    private void tipo(Atributos tipo) {
+    if (preAnalisis.equals("integer") || preAnalisis.equals("real")) {
+
+        Atributos te = new Atributos();
+        tipo_estandar(te);
+
+        if (analizarSemantica)
+            tipo.tipo = te.tipo;   // AS8
+
+        return;
+    }
+
+    if (preAnalisis.equals("array")) {
+
+        emparejar("array");
+        emparejar("[");
+
+        // -------- num_inf --------
+        Linea_BE tokenNumInf = cmp.be.preAnalisis;
+
+        if (!preAnalisis.equals("num")) {
+            error("[tipo] Se esperaba número inferior en rango.");
+            return;
+        }
+
+        int numInf = Integer.parseInt(tokenNumInf.lexema);
+        emparejar("num"); // consume num_inf
+
+        emparejar(".");
+        emparejar(".");
+
+        // -------- num_sup --------
+        Linea_BE tokenNumSup = cmp.be.preAnalisis;
+
+        if (!preAnalisis.equals("num")) {
+            error("[tipo] Se esperaba número superior en rango.");
+            return;
+        }
+
+        int numSup = Integer.parseInt(tokenNumSup.lexema);
+        emparejar("num"); // consume num_sup
+
+        emparejar("]");
+        emparejar("of");
+
+        // -------- tipo_estandar --------
+        Atributos te = new Atributos();
+        tipo_estandar(te);
+
+        // ======== AS9 ========
+        if (analizarSemantica) {
+
+            boolean ok = true;
+
+            if (numInf > numSup) ok = false;
+
+            if (ok) {
+                tipo.tipo = "ARRAY(" + numInf + ".." + numSup + "," + te.tipo + ")";
+            } else {
+                tipo.tipo = ERROR_TIPO;
+                cmp.me.error(Compilador.ERR_SEMANTICO,
+                    "[tipo] Rango inválido en arreglo: " + numInf + " .. " + numSup);
+            }
+        }
+
+        return;
+    }
+
+    // ----------- Error si no es ninguno -----------
+    error("[tipo] Se esperaba integer, real o array.");
+}
+
+
+    private void declaracion_subprograma(Atributos dsub) {
+
+        Atributos encab = new Atributos();
+        Atributos decls = new Atributos();
+        Atributos prop  = new Atributos();
+
+        // ===== encab_subprograma =====
+        encab_subprograma(encab);
+
+        // ===== declaraciones =====
+        declaraciones(decls);
+
+        // ===== proposicion_compuesta =====
+        proposicion_compuesta(prop);
+
+        // ===== AS16 =====
+        if (analizarSemantica) {
+            if ( encab.tipo.equals(VACIO)
+                 && decls.tipo.equals(VACIO)
+                 && prop.tipo.equals(VACIO) ) {
+
+                dsub.tipo = VACIO;
+
+            } else {
+                dsub.tipo = ERROR_TIPO;
+            }
         }
     }
 
-    private void tipo() {
-        if (preAnalisis.equals("integer") || preAnalisis.equals("real")) {
-            tipo_estandar();
-        } else if (preAnalisis.equals("array")) {
-            emparejar("array");
-            emparejar("[");
-            if (preAnalisis.equals("num")) {
-                emparejar("num");
+
+    private void encab_subprograma(Atributos encab) {
+
+    Linea_BE idActual = new Linea_BE();
+    Atributos tipoStd = new Atributos();
+
+    // ---------- CASO function ----------
+    if (preAnalisis.equals("function")) {
+
+        emparejar("function");
+
+        idActual = cmp.be.preAnalisis;   // Guardar el ID
+        emparejar("id");
+
+        // argumentos
+        argumentos(new Atributos());
+
+        emparejar(":");
+
+        // tipo_estandar
+        tipo_estandar(tipoStd);
+
+        emparejar(";");
+
+        // ======== AS17 =========
+        if (analizarSemantica) {
+
+            String tipoEncontrado = cmp.ts.buscaTipo(idActual.entrada);
+
+            if (tipoEncontrado == null || tipoEncontrado.equals("")) {
+
+                // Registrar la función con su tipo de retorno
+                cmp.ts.anadeTipo(idActual.entrada, tipoStd.tipo);
+
+                encab.tipo = VACIO;
+
             } else {
-                error("[tipo] Se esperaba 'num'.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
+
+                encab.tipo = ERROR_TIPO;
+
+                cmp.me.error(
+                    Compilador.ERR_SEMANTICO,
+                    "[encab_subprograma] Identificador duplicado en function: "
+                    + idActual.lexema
+                );
             }
-            emparejar(".");
-            emparejar(".");
-            if (preAnalisis.equals("num")) {
-                emparejar("num");
-            } else {
-                error("[tipo] Se esperaba 'num'.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
-            }
-            emparejar("]");
-            emparejar("of");
-            tipo_estandar();
-        } else {
-            error("[tipo] Se esperaba 'integer', 'real' o 'array'.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
         }
+
+        return;
     }
 
-    private void declaracion_subprograma() {
-        encab_subprograma();
-        declaraciones();
-        proposicion_compuesta();
-    }
+    // ---------- CASO procedure ----------
+    else if (preAnalisis.equals("procedure")) {
 
-    private void encab_subprograma() {
-        if (preAnalisis.equals("function")) {
-            emparejar("function");
-            if (preAnalisis.equals("id")) {
-                emparejar("id");
+        emparejar("procedure");
+
+        idActual = cmp.be.preAnalisis;
+        emparejar("id");
+
+        // argumentos
+        argumentos(new Atributos());
+
+        // ======== AS18 =========
+        if (analizarSemantica) {
+
+            String tipoEncontrado = cmp.ts.buscaTipo(idActual.entrada);
+
+            if (tipoEncontrado == null || tipoEncontrado.equals("")) {
+
+                // Registrar el procedimiento
+                cmp.ts.anadeTipo(idActual.entrada, "procedure");
+
+                encab.tipo = VACIO;
+
             } else {
-                error("[encab_subprograma] Se esperaba identificador.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
+
+                encab.tipo = ERROR_TIPO;
+
+                cmp.me.error(
+                    Compilador.ERR_SEMANTICO,
+                    "[encab_subprograma] Identificador duplicado en procedure: "
+                    + idActual.lexema
+                );
             }
-            argumentos();
-            emparejar(":");
-            tipo_estandar();
-            emparejar(";");
-        } else if (preAnalisis.equals("procedure")) {
-            emparejar("procedure");
-            if (preAnalisis.equals("id")) {
-                emparejar("id");
-            } else {
-                error("[encab_subprograma] Se esperaba identificador.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
-            }
-            argumentos();
-            emparejar(";");
-        } else {
-            error("[encab_subprograma] Se esperaba 'function' o 'procedure'.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
         }
+
+        return;
     }
 
-    private void argumentos() {
+    // ----------- ERROR si no es ninguno ------------
+    error("[encab_subprograma] Se esperaba 'function' o 'procedure'.");
+}
+
+
+
+        private void argumentos(Atributos argumentos) {
+
+        // ----------- CASO ( lista_parametros )  -----------   {19}
         if (preAnalisis.equals("(")) {
+
             emparejar("(");
-            lista_parametros();
+
+            Atributos lista = new Atributos();
+            lista_parametros(lista);
+
             emparejar(")");
-        } else {
-            // argumentos → ε
+
+            // ===== AS19 =====
+            if (analizarSemantica) {
+                argumentos.tipo = lista.tipo;   // tipo devuelto por la lista
+            }
+
+            return;
+        }
+
+        // ----------- CASO ε  ------------------------------   {20}
+        if (analizarSemantica) {
+            argumentos.tipo = "void";     // AS20
         }
     }
 
-    private void lista_parametros() {
+
+        private void lista_parametros(Atributos lp) {
+
+        // ====== atributos auxiliares ======
+        Atributos listaIds = new Atributos();
+        Atributos tipo     = new Atributos();
+        Atributos lpPrima  = new Atributos();
+
+        // ----- lista_parametros → lista_identificadores : tipo lista_parametros' -----
+
         if (preAnalisis.equals("id")) {
-            lista_identificadores();
+
+            // --- lista_identificadores ---
+            lista_identificadores(listaIds);
+
             emparejar(":");
-            tipo();
-            _lista_parametros();
-        } else {
-            error("[lista_parametros] Se esperaba identificador.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
+
+            // --- tipo ---
+            tipo(tipo);
+
+            // === AS21 ===
+            if (analizarSemantica) {
+                lp.tipo = tipo.tipo;   // el tipo de TODOS los parámetros
+            }
+
+            // --- lista_parametros' ---
+            _lista_parametros(lpPrima);
+
+            return;
         }
+
+        error("[lista_parametros] Se esperaba un identificador para parámetros.\nLínea: "
+              + cmp.be.preAnalisis.numLinea);
     }
 
-    private void _lista_parametros() {
+
+        private void _lista_parametros(Atributos lpPrima) {
+
+        // --------- CASO ; lista_identificadores : tipo lista_parametros' -----------
         if (preAnalisis.equals(";")) {
+
             emparejar(";");
-            lista_identificadores();
+
+            Atributos listaIds = new Atributos();
+            lista_identificadores(listaIds);
+
             emparejar(":");
-            tipo();
-            _lista_parametros();
-        } else {
-            // lista_parametros' → ε
+
+            Atributos tipo = new Atributos();
+            tipo(tipo);
+
+            Atributos lpPrima2 = new Atributos();
+            _lista_parametros(lpPrima2);
+
+            // ==================== AS22 =====================
+            if (analizarSemantica) {
+
+                if (!tipo.tipo.equals(ERROR_TIPO) &&
+                     lpPrima2.tipo.equals(VACIO)) {
+
+                    lpPrima.tipo = VACIO;
+
+                } else {
+                    lpPrima.tipo = ERROR_TIPO;
+                }
+            }
+
+            return;
+        }
+
+        // --------- CASO ε  (AS23) ----------
+        if (analizarSemantica) {
+            lpPrima.tipo = "void";   // AS23
         }
     }
 
-//Procedure hechos por Yessenia Verónica Morones Dovalí
-    private void proposicion_compuesta() {
-        //proposicion_compuesta → begin proposiciones_optativas end
-        if (preAnalisis.equals("begin")) {
-            //begin proposiciones_optativas end
-            emparejar("begin");
-            proposiciones_optativas();
-            emparejar("end");
-        } else {
-            error("[proposicion_compuesta] Se esperaba 'begin'.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
+
+private void proposicion_compuesta(Atributos propCompuesta) {
+
+    Atributos propOptativas = new Atributos();
+
+    if (preAnalisis.equals("begin")) {
+
+        emparejar("begin");
+
+        // ===== proposiciones_optativas =====
+        proposiciones_optativas(propOptativas);
+
+        emparejar("end");
+
+        // ========== AS24 ==========
+        if (analizarSemantica) {
+            if (propOptativas.tipo.equals(VACIO)) {
+                propCompuesta.tipo = VACIO;
+            } else {
+                propCompuesta.tipo = ERROR_TIPO;
+            }
+        }
+
+    } else {
+        error("[proposicion_compuesta] Se esperaba 'begin'. Línea: "
+              + cmp.be.preAnalisis.numLinea);
+    }
+}
+
+        private void lista_proposiciones(Atributos lista) {
+
+        Atributos prop = new Atributos();
+        Atributos listaPrima = new Atributos();
+
+        // ====== proposicion ======
+        proposicion(prop);
+
+        // ====== lista_proposiciones' ======
+        _lista_proposiciones(listaPrima);
+
+        // ========== AS27 ==========
+        if (analizarSemantica) {
+            if (prop.tipo.equals(VACIO) && listaPrima.tipo.equals(VACIO)) {
+                lista.tipo = VACIO;
+            } else {
+                lista.tipo = ERROR_TIPO;
+            }
         }
     }
 
-    private void lista_proposiciones() {
-        // lista_proposiciones → proposicion lista_proposiciones’
-        proposicion();
-        _lista_proposiciones();
-    }
-
-    private void proposicion() {
+    private void proposicion(Atributos prop) {
         // proposicion → id proposicion’ 
         //             | poposicion_compuesta
         //             | if expresion then proposicion else proposicion
@@ -389,21 +810,22 @@ public class SintacticoSemantico {
             _proposicion();
         } else if (preAnalisis.equals("begin")) {
             // proposicion → proposicion_compuesta
-            proposicion_compuesta();
+            Atributos proposicionCom = new Atributos();
+            proposicion_compuesta(proposicionCom);
         } else if (preAnalisis.equals("if")) {
             // proposicion → if expresion then proposicion else proposicion
             emparejar("if");
             expresion();
             emparejar("then");
-            proposicion();
+            proposicion(prop);
             emparejar("else");
-            proposicion();
+            proposicion(prop);
         } else if (preAnalisis.equals("while")) {
             // proposicion → while expresion do proposicion
             emparejar("while");
             expresion();
             emparejar("do");
-            proposicion();
+            proposicion(prop);
         } else {
             error("[proposicion] Se esperaba 'id', 'begin', 'if' o 'while'.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
         }
@@ -472,204 +894,225 @@ public class SintacticoSemantico {
 //--------------------------------------------------------------------------
 //--------------------------------------------------------------------------
 //Procedures hechos por Daniela Aldaco
-    //Acciones semanticas hechas por Yessenia Morones
-    private void expresion() {
+    private void expresion(Atributos expresion) {
+        Atributos expSimple = new Atributos();
+        Atributos expresionPrima = new Atributos();
+        
         if (preAnalisis.equals("id") || preAnalisis.equals("num")
                 || preAnalisis.equals("(") || preAnalisis.equals("num.num")) {
-            expresion_simple();
-            _expresion();
+            expresion_simple(expSimple);
+            expresionPrima.h = expSimple.tipo;
+            _expresion(expresionPrima);
             
-            //accion 45
-            if(analizarSemantica){
-                if(tipo_expresion == null){
-                    tipo_expresion = tipo_expresion_simple;
+            // ==================== AS45 =====================
+            if(analizarSemantica) {
+                if(expresionPrima.tipo.equals(VACIO)) {
+                    expresion.tipo = expSimple.tipo;
+                } else{
+                    expresion.tipo = expresionPrima.tipo;
                 }
             }
         } else {
             error("[expresion] Se esperaba inicio de expresión.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
+            if(analizarSemantica) {
+                expresion.tipo = ERROR_TIPO;
         }
     }
 
-    private void expresion_simple() {
+    private void expresion_simple(Atributos expSimple) {
+        Atributos termino = new Atributos();
+        Atributos expSimplePrima = new Atributos();
+
         if (preAnalisis.equals("id") || preAnalisis.equals("num")
                 || preAnalisis.equals("(") || preAnalisis.equals("num.num")) {
-            // termino() dejará su tipo en tipo_termino
-            termino();
-            // Inicialmente expresion_simple toma el tipo del termino
-            tipo_expresion_simple = tipo_termino;
-            // procesar posibles +/-
-            _expresion_simple();
-            // Si _expresion_simple dejó un tipo distinto, ese es el resultado
-            // Accion 49 / 50
+            termino(termino);
+            expSimplePrima.h = termino.tipo;
+            _expresion_simple(expSimplePrima);
+
+            // ==================== AS48 =====================
             if (analizarSemantica) {
-                if (tipo_expresion_simple == null) {
-                    tipo_expresion_simple = tipo_termino; 
+                if (expSimplePrima.tipo.equals(VACIO)) {
+                    expSimple.tipo = termino.tipo;
+                } else {
+                    expSimple.tipo = expSimplePrima.tipo;
                 }
             }
         } else {
             error("[expresion_simple] Se esperaba inicio de expresión simple.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
+            if (analizarSemantica) {
+                expSimple.tipo = ERROR_TIPO;
+            }
         }
     }
 
-     private void _expresion_simple() {
+    private void _expresion_simple(Atributos expSimplePrima) {
+        Atributos termino = new Atributos();
+        Atributos expSimplePrima2 = new Atributos();
+
+
         if (preAnalisis.equals("opsuma")) {
-            // operador suma presente: opsuma termino expresion_simple’
-            // guardamos tipo izquierdo actual
-            String izquierdo = tipo_expresion_simple;
-
             emparejar("opsuma");
-            termino();
-            String derecho = tipo_termino;
+            termino(termino);
 
-            // combinar tipos entre izquierdo y derecho (regla 49)
-            if (analizarSemantica) {
-                String combinado = combinaTiposAritmeticos(izquierdo, derecho);
-                if (ERROR_TIPO.equals(combinado)) {
-                    tipo_expresion_simple_prima = ERROR_TIPO;
-                    tipo_expresion_simple = ERROR_TIPO;
-                    cmp.me.error(Compilador.ERR_SINTACTICO,
-                            "Error de tipos en suma/ resta. Línea: " + cmp.be.preAnalisis.numLinea);
-                } else {
-                    tipo_expresion_simple_prima = combinado;
-                    tipo_expresion_simple = combinado;
+            String res = ERROR_TIPO;
+            
+            // ==================== AS49 =====================
+           if(analizarSemantica) {
+                if((expresion_simple_P.h.equals("integer") || expresion_simple_P.h.equals("real")) && (termino.tipo.equals("integer") || termino.tipo.equals("real"))) {
+                    if(expresion_simple_P.h.equals("real") || termino.tipo.equals("real")) {
+                        tipoResult = "real";
+                    }
+                    else{
+                        tipoResult = "integer";
+                    }
+                } 
+                else {
+                     cmp.me.error(Compilador.ERR_SEMANTICO, "Tipos invalidos");
                 }
             }
-
-            // recursión para más opsuma
-            _expresion_simple();
-
         } else if (preAnalisis.equals("oprel") || preAnalisis.equals(")")
                 || preAnalisis.equals("]") || preAnalisis.equals("then")
                 || preAnalisis.equals("do") || preAnalisis.equals(";")
                 || preAnalisis.equals("end") || preAnalisis.equals("else")
                 || preAnalisis.equals(",")) {
-            // ε-producción -> expresion_simple' := VACIO (regla 50)
+            // ε-producción
+            // ==================== AS50 =====================
             if (analizarSemantica) {
-                if (tipo_expresion_simple_prima == null) tipo_expresion_simple_prima = VACIO;
+                expSimplePrima.tipo = void;
             }
         } else {
             error("[expresion_simple’] Se esperaba 'opsuma' o fin de expresión simple.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
         }
     }
 
-    private void termino() {
+    private void termino(Atributos termino) {
+        Atributos factor = new Atributos();
+        Atributos terminoPrima = new Atributos();
+
         if (preAnalisis.equals("id") || preAnalisis.equals("num")
                 || preAnalisis.equals("(") || preAnalisis.equals("num.num")) {
-            factor();
-            // tipo_termino inicialmente es el tipo del factor
-            tipo_termino = tipo_factor;
-            _termino();
-            // si no hay parte prima, tipo_termino ya quedó en tipo_factor
+            factor(factor);
+            terminoPrima.h = factor.tipo;
+            _termino(terminoPrima);
+
+            // ==================== AS51 =====================
+            if (analizarSemantica) {
+                if (factor.tipo.equals("integer") && terminoPrima.tipo.equals("integer")) {
+                    termino.tipo = "integer";
+                }else if((factor.tipo.equals("real")) && (terminoPrima.tipo.equals("real"))){
+                    termino.tipo = "real";
+                }else{
+                    termino.tipo = ERROR_TIPO;
+                    cmp.me.error(Compilador.ERR_SEMANTICO, "[termino] Error de tipos en operacion aritmetica: "
+                            + factor.tipo + " y " + terminoPrima.tipo);
+                }
+            }
         } else {
             error("[termino] Se esperaba inicio de término.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
         }
     }
 
-    private void _termino() {
+    private void _termino(Atributos terminoPrima) {
+        Atributos factor = new Atributos();
+        Atributos terminoPrima2 = new Atributos();
+
         if (preAnalisis.equals("opmult")) {
-            // opmult factor termino'
-            String izquierdo = tipo_termino;
-
             emparejar("opmult");
-            factor();
-            String derecho = tipo_factor;
+            factor(factor);
 
-            // combinar tipos multiplicativos (regla 51/52)
+            // ==================== AS52 =====================
+            String res = ERROR_TIPO;
             if (analizarSemantica) {
-                String combinado = combinaTiposAritmeticos(izquierdo, derecho);
-                if (ERROR_TIPO.equals(combinado)) {
-                    tipo_termino_prima = ERROR_TIPO;
-                    tipo_termino = ERROR_TIPO;
-                    cmp.me.error(Compilador.ERR_SINTACTICO,
-                            "Error de tipos en operador multiplicativo. Línea: " + cmp.be.preAnalisis.numLinea);
+                if((factor.tipo.equals("integer")) && (terminoPrima2.tipo.equals("integer"))) {
+                    res = "integer";
+                } else if((factor.tipo.equals("real")) || (terminoPrima2.tipo.equals("real"))){
+                    res = "real";
                 } else {
-                    tipo_termino_prima = combinado;
-                    tipo_termino = combinado;
+                    cmp.me.error(Compilador.ERR_SEMANTICO, "Tipos invalidos");
                 }
             }
 
-            _termino(); // recursión
+            terminoPrima2.h = res;
+            _termino(terminoPrima2);
+
+            if(analizarSemantica) {
+                terminoPrima.tipo = terminoPrima2.tipo;
+            }
         } else if (preAnalisis.equals("opsuma") || preAnalisis.equals("oprel")
                 || preAnalisis.equals(")") || preAnalisis.equals("]")
                 || preAnalisis.equals("then") || preAnalisis.equals("do")
                 || preAnalisis.equals(";") || preAnalisis.equals("end")
                 || preAnalisis.equals("else") || preAnalisis.equals(",")) {
-            // ε-producción -> termino' := VACIO (regla 53)
+            // ε-producción
+            // ==================== AS53 =====================
             if (analizarSemantica) {
-                if (tipo_termino_prima == null) tipo_termino_prima = VACIO;
+                terminoPrima.tipo = void;
             }
         } else {
             error("[termino’] Se esperaba 'opmult' o fin de término.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
         }
     }
 
-    private void factor() {
+    private void factor(Atributos factor) {
+        Linea_BE idActual = new Linea_BE();
+        Atributos factorPrima = new Atributos();
+        Atributos expresion = new Atributos();
+
         if (preAnalisis.equals("id")) {
-            // guardamos lexema del id antes de avanzar
-            String idLex = cmp.be.preAnalisis.lexema;
+            idActual = cmp.be.preAnalisis;
             emparejar("id");
 
-            // regla 54: buscar tipo en TS
+            // ==================== AS54 =====================
             if (analizarSemantica) {
-                int pos = cmp.ts.buscar(idLex);
+                int pos = cmp.ts.buscar(idActual.entrada);
                 if (pos > 0) {
-                    tipo_factor = cmp.ts.buscaTipo(pos); // asume que buscaTipo devuelve String del tipo
+                    factor.tipo = cmp.ts.buscaTipo(pos);
                 } else {
-                    tipo_factor = ERROR_TIPO;
-                    cmp.me.error(Compilador.ERR_SINTACTICO,
-                            "Identificador no declarado: " + idLex + ". Línea: " + cmp.be.preAnalisis.numLinea);
+                    factor.tipo = ERROR_TIPO;
+                    cmp.me.error(Compilador.ERR_SEMANTICO,
+                            "[factor] Identificador no declarado: " + idActual.lexema);
                 }
             }
 
-            // factor' (posible llamada)
-            _factor();
-
-            // Si factor' representó una llamada a función, la semántica de _factor puede actualizar tipo_factor
-            // (mantener lo que ya se haya fijado)
+            _factor(factorPrima, idActual);
+            
         } else if (preAnalisis.equals("num")) {
             emparejar("num");
-            // regla 55
+
+            // ==================== AS55 =====================
             if (analizarSemantica) {
-                tipo_factor = ENTERO;
+                factor.tipo = "integer";
             }
         } else if (preAnalisis.equals("num.num")) {
             emparejar("num.num");  // num.num
-            // regla 56
+
+            // ==================== AS56 =====================
             if (analizarSemantica) {
-                tipo_factor = REAL;
+                factor.tipo = "real";
             }
         } else if (preAnalisis.equals("(")) {
             emparejar("(");
-            // ( expresion )
-            expresion();
+            expresion(expresion);
+
+            // ==================== AS57 =====================
+            if (analizarSemantica) factor.tipo = expresion.tipo; 
             emparejar(")");
-            // regla 57: factor.tipo := expresion.tipo
-            if (analizarSemantica) {
-                tipo_factor = tipo_expresion;
-            }
         } else {
             error("[factor] Se esperaba 'id', 'num' o '(' en factor.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
         }
     }
 
-    private void _factor() {
+    private void _factor(Atributos factorPrima, Linea_BE idActual) {
+        Atributos listaExpresiones = new Atributos();
+        
         if (preAnalisis.equals("(")) {
-            // llamada a procedimiento/función o lista de exp
             emparejar("(");
-            lista_expresiones();
+            lista_expresiones(listaExpresiones);
             emparejar(")");
 
-            // regla 58: factor'.tipo := verificaParametros(lista_expresiones)
+            // ==================== AS58 =====================
             if (analizarSemantica) {
-                // Por simplicidad llamamos a un verificador que devuelve 'void' o tipo de retorno
-                // en una implementacion completa verificarías firmas en la tabla de simbolos
-                tipo_factor_prima = verificaParametros();
-                // Si la llamada representa invocación de función y devuelve un tipo,
-                // deberías asignarlo a tipo_factor (en esta plantilla dejamos tipo_factor como está
-                // salvo que quieras mapearlo a tipo_factor_prima)
-                if (!VOID.equals(tipo_factor_prima) && tipo_factor_prima != null) {
-                    tipo_factor = tipo_factor_prima;
-                }
+                factorPrima.tipo = verificarParametros(idActual, listaExpresiones);
             }
         } else if (preAnalisis.equals("opmult") || preAnalisis.equals("opsuma")
                 || preAnalisis.equals("oprel") || preAnalisis.equals(")")
@@ -677,9 +1120,10 @@ public class SintacticoSemantico {
                 || preAnalisis.equals("do") || preAnalisis.equals(";")
                 || preAnalisis.equals("end") || preAnalisis.equals("else")
                 || preAnalisis.equals(",")) {
-            // ε-producción -> regla 59
+            // ε-producción
+            // ==================== AS59 =====================
             if (analizarSemantica) {
-                tipo_factor_prima = VOID;
+                factorPrima.tipo = void;
             }
         } else {
             error("[factor’] Se esperaba '(' o fin de factor.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
@@ -696,39 +1140,33 @@ public class SintacticoSemantico {
         }
     }
     
-    // -------------------- Auxiliares semánticos --------------------
+        private void _declaraciones_subprogramas(Atributos dspPrima) {
 
-    /**
-     * Combina dos tipos aritméticos aplicando las reglas:
-     * ENTERO + ENTERO -> ENTERO
-     * ENTERO + REAL -> REAL
-     * REAL + ENTERO -> REAL
-     * REAL + REAL -> REAL
-     * cualquier otro caso -> ERROR_TIPO
-     */
-    private String combinaTiposAritmeticos(String a, String b) {
-        if (a == null || b == null) return ERROR_TIPO;
-        if (ERROR_TIPO.equals(a) || ERROR_TIPO.equals(b)) return ERROR_TIPO;
+        // ======== caso ε ========  (AS15)
+        if (!preAnalisis.equals("function") && !preAnalisis.equals("procedure")) {
+            if (analizarSemantica) {
+                dspPrima.tipo = VACIO;
+            }
+            return;
+        }
 
-        if (ENTERO.equals(a) && ENTERO.equals(b)) return ENTERO;
-        if (ENTERO.equals(a) && REAL.equals(b)) return REAL;
-        if (REAL.equals(a) && ENTERO.equals(b)) return REAL;
-        if (REAL.equals(a) && REAL.equals(b)) return REAL;
-        // si alguno no es numérico -> error
-        return ERROR_TIPO;
-    }
+        // ===== declaracion_subprograma ; declaraciones_subprogramas' =====
+        Atributos dsub = new Atributos();
+        Atributos dspPrima2 = new Atributos();
 
-    /**
-     * Verificador simple de parámetros de llamada.
-     * En una implementación completa se consultaría la firma de la función/procedimiento
-     * en la tabla de símbolos, comparando cantidad y tipos.
-     * Aquí devolvemos "void" como placeholder para llamadas a procedimiento,
-     * o podrías devolver el tipo de retorno si tu TS tiene esa info.
-     */
-    private String verificaParametros() {
-        // Implementación mínima: asumimos que la verificación pasa y la llamada es a procedimiento -> void
-        // Cambia esto cuando dispongas de las firmas de rutinas en cmp.ts
-        return VOID;
+        declaracion_subprograma(dsub);
+        emparejar(";");
+
+        _declaraciones_subprogramas(dspPrima2);
+
+        // ======== AS14 ========
+        if (analizarSemantica) {
+            if (dsub.tipo.equals(VACIO) && dspPrima2.tipo.equals(VACIO)) {
+                dspPrima.tipo = VACIO;
+            } else {
+                dspPrima.tipo = ERROR_TIPO;
+            }
+        }
     }
 
     //--------------------------------------------------------------------------
@@ -781,7 +1219,7 @@ public class SintacticoSemantico {
     //--------------------------------------------------------------------------
     //  *  *   *   *    PEGAR AQUI EL CODIGO DE LOS PROCEDURES  *  *  *  *
     //--------------------------------------------------------------------------
-    private void P() {
+    private void P(Atributos atrPrograma) {
         if (preAnalisis.equals("id") || preAnalisis.equals("inicio")) {
             V();
             C();
@@ -881,95 +1319,93 @@ public class SintacticoSemantico {
     // Si existe la columna pero no tiene ambito entonces se rellenan los datos
     // del tipo y el ambito. 
     private boolean checarArchivo(String nomarchivo) {
-        FileReader fr = null;
-        BufferedReader br = null;
-        String linea = null;
-        String columna = null;
-        String tipo = null;
-        String ambito = null;
-        boolean existeArch = false;
-        int pos;
+    FileReader fr = null;
+    BufferedReader br = null;
+    String linea = null;
+    String columna = null;
+    String tipo = null;
+    String ambito = null;
+    boolean existeArch = false;
+    int pos;
 
-        try {
-            // Intentar abrir el archivo con el diseño de la tabla  
-            fr = new FileReader(nomarchivo);
-            cmp.ts.anadeTipo(cmp.be.preAnalisis.getEntrada(), "tabla");
-            br = new BufferedReader(fr);
+    try {
+        fr = new FileReader(nomarchivo);
+        br = new BufferedReader(fr);
 
-            // Leer linea x linea, cada linea es la especificacion de una columna
-            linea = br.readLine();
-            while (linea != null) {
-                // Extraer nombre y tipo de dato de la columna
-                try {
-                    columna = linea.substring(0, 24).trim();
-                } catch (Exception err) {
-                    columna = "ERROR";
-                }
-                try {
-                    tipo = linea.substring(29).trim();
-                } catch (Exception err) {
-                    tipo = "ERROR";
-                }
-                try {
-                    ambito = nomarchivo.substring(0, nomarchivo.length() - 3);
-                } catch (Exception err) {
-                    ambito = "ERROR";
-                }
-                // Agregar a la tabla de simbolos
-                Linea_TS lts = new Linea_TS("id",
-                        columna,
-                        "COLUMNA(" + tipo + ")",
-                        ambito
-                );
-                // Checar si en la Tabla de Simbolos existe la entrada para un 
-                // lexema y ambito iguales al de columna y ambito de la tabla .db
-                if ((pos = cmp.ts.buscar(columna, ambito)) > 0) {
-                    // YA EXISTE: Si no tiene tipo asignarle el tipo columna(t) 
-                    if (cmp.ts.buscaTipo(pos).trim().isEmpty()) {
-                        cmp.ts.anadeTipo(pos, tipo);
-                    }
-                } else {
-                    // NO EXISTE: Buscar si en la T. de S. existe solo el lexema de la columna
-                    if ((pos = cmp.ts.buscar(columna)) > 0) {
-                        // SI EXISTE: checar si el ambito esta en blanco
-                        Linea_TS aux = cmp.ts.obt_elemento(pos);
-                        if (aux.getAmbito().trim().isEmpty()) {
-                            // Ambito en blanco rellenar el tipo y el ambito  
-                            cmp.ts.anadeTipo(pos, "COLUMNA(" + tipo + ")");
-                            cmp.ts.anadeAmbito(pos, ambito);
+        linea = br.readLine();
 
-                        } else {
-                            // Insertar un nuevo elemento a la tabla de simb.
-                            cmp.ts.insertar(lts);
-                        }
+        while (linea != null) {
+
+            // ===== Extraer nombre y tipo =====
+            try { columna = linea.substring(0, 24).trim(); }
+            catch (Exception e) { columna = "ERROR"; }
+
+            try { tipo = linea.substring(29).trim(); }
+            catch (Exception e) { tipo = "ERROR"; }
+
+            try { ambito = nomarchivo.substring(0, nomarchivo.length() - 3); }
+            catch (Exception e) { ambito = "ERROR"; }
+
+            // Crear la linea para TS
+            Linea_TS nueva = new Linea_TS(
+                    "id",
+                    columna,
+                    "COLUMNA(" + tipo + ")",
+                    ambito
+            );
+
+            // ===== Caso 1: Existe entrada con mismo lexema y ambito =====
+            pos = cmp.ts.buscar(columna, ambito);
+            if (pos > 0) {
+
+                // Si no tiene tipo asignado → asignarlo
+                if (cmp.ts.buscaTipo(pos).trim().isEmpty()) {
+                    cmp.ts.anadeTipo(pos, "COLUMNA(" + tipo + ")");
+                }
+
+            } else {
+                // ===== Caso 2: Existe lexema sin ambito =====
+                pos = cmp.ts.buscar(columna);
+                if (pos > 0) {
+                    Linea_TS aux = cmp.ts.obt_elemento(pos);
+
+                    if (aux.getAmbito().trim().isEmpty()) {
+
+                        // Asignar tipo
+                        cmp.ts.anadeTipo(pos, "COLUMNA(" + tipo + ")");
+
+                        // Asignar ambito
+                        cmp.ts.anadeAmbito(pos, ambito);
+
                     } else {
-                        // NO EXISTE: insertar un nuevo elemento a la tabla de simb.
-                        cmp.ts.insertar(lts);
+                        // Diferente ambito → insertar nueva entrada
+                        cmp.ts.insertar(nueva);
                     }
-                }
 
-                // Leer siguiente linea
-                linea = br.readLine();
-            }
-            existeArch = true;
-        } catch (IOException ex) {
-            System.out.println(ex);
-        } finally {
-            // Cierra los streams de texto si es que se crearon
-            try {
-                if (br != null) {
-                    br.close();
+                } else {
+                    // ===== Caso 3: No existe en TS → insertar =====
+                    cmp.ts.insertar(nueva);
                 }
-                if (fr != null) {
-                    fr.close();
-                }
-            } catch (IOException ex) {
             }
+
+            linea = br.readLine();
         }
-        return existeArch;
+
+        existeArch = true;
+
+    } catch (IOException ex) {
+        System.out.println(ex);
+    } finally {
+        try { if (br != null) br.close(); } catch (IOException ex) {}
+        try { if (fr != null) fr.close(); } catch (IOException ex) {}
     }
 
+    return existeArch;
+}
+
     /*----------------------------------------------------------------------------------------*/
+
+    
 }
 //------------------------------------------------------------------------------
 //::
