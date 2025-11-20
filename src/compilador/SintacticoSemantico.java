@@ -43,6 +43,17 @@ public class SintacticoSemantico {
     private Compilador cmp;
     private boolean analizarSemantica = false;
     private String preAnalisis;
+    
+    public static final String VACIO = "vacio";
+    public static final String ERROR_TIPO = "error_tipo";
+    public static final String INTEGER = "integer";
+    public static final String REAL = "real";
+    public static final String BOOLEAN = "boolean";
+    public static final String PROGRAM = "program";
+    public static final String CHAR = "char"; 
+    public static final String PROCEDURE = "procedure";
+
+    private ArrayList<Integer> lista_entradas_id = new ArrayList<>();
 
     //--------------------------------------------------------------------------
     // Constructor de la clase, recibe la referencia de la clase principal del 
