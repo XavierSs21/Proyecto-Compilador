@@ -120,87 +120,79 @@ public class SintacticoSemantico {
 
        private void declaraciones(Atributos declaraciones) {
 
-    // ----------- CASO ε (AS3) -----------------
-    if (!preAnalisis.equals("var")) {
-        if (analizarSemantica) {
-            declaraciones.tipo = VACIO;   // AS3
+        // ----------- CASO ε (AS3) -----------------
+        if (!preAnalisis.equals("var")) {
+            if (analizarSemantica) {
+                declaraciones.tipo = VACIO;   // AS3
+            }
+            return;
         }
-        return;
-    }
 
-    // ----------- CASO  var lista_identificadores : tipo ; declaraciones -----------
-    emparejar("var");
+        // ------- CASO: var lista_identificadores : tipo ; declaraciones -------
+        emparejar("var");
 
-    // atributos auxiliares
-    Atributos lista = new Atributos();
-    Atributos tipo  = new Atributos();
-    Atributos declaraciones1 = new Atributos();
+        Atributos lista = new Atributos();
+        Atributos tipo  = new Atributos();
+        Atributos declaraciones1 = new Atributos();
 
-    // ===== lista_identificadores =====
-    lista_identificadores(lista);
+        // lista_identificadores
+        lista_identificadores(lista);
 
-    emparejar(":");
+        emparejar(":");
 
-    // ===== tipo =====
-    tipo(tipo);
+        // tipo
+        tipo(tipo);
 
-    // =================== AS4 ===================
-    if (analizarSemantica) {
+        // =================== AS4 ===================
+        if (analizarSemantica) {
 
-        declaraciones.tipoAux = VACIO; // bandera
+            boolean ok = true;   // bandera local
 
-        for (String entrada : lista_entradas_id) {
+            for (String entrada : lista_entradas_id) {
 
-            int pos = cmp.ts.buscar(entrada);  
-            String tipoExistente = (pos > 0) ? cmp.ts.buscaTipo(pos) : "";
+                int pos = cmp.ts.buscar(entrada);
+                String tipoExistente = (pos > 0) ? cmp.ts.buscaTipo(pos) : "";
 
-            if (tipoExistente == null || tipoExistente.isEmpty()) {
+                if (tipoExistente == null || tipoExistente.isEmpty()) {
 
-                // ----------- NO EXISTE → insertar primero -----------
-                Linea_TS nueva = new Linea_TS(
-                    "id",
-                    entrada,
-                    "",      // tipo vacío
-                    ""       // ambito vacío
-                );
+                    Linea_TS nueva = new Linea_TS("id", entrada, "", "");
+                    pos = cmp.ts.insertar(nueva);
 
-                pos = cmp.ts.insertar(nueva); // ahora sí existe
+                    cmp.ts.anadeTipo(pos, tipo.tipo);
 
-                // ----------- ASIGNAR TIPO CORRECTAMENTE -----------
-                cmp.ts.anadeTipo(pos, tipo.tipo);
+                } else {
+                    ok = false;
+                    cmp.me.error(
+                        Compilador.ERR_SEMANTICO,
+                        "[declaraciones] Identificador ya declarado: " + entrada
+                    );
+                }
+            }
+
+            // resultado del AS4
+            declaraciones.tipo = ok ? VACIO : ERROR_TIPO;
+
+            lista_entradas_id.clear();
+        }
+
+        emparejar(";");
+
+        // siguientes declaraciones
+        declaraciones(declaraciones1);
+
+        // =================== AS5 ===================
+        if (analizarSemantica) {
+            if (declaraciones.tipo.equals(VACIO)
+                    && declaraciones1.tipo.equals(VACIO)) {
+
+                declaraciones.tipo = VACIO;
 
             } else {
-
-                // ya estaba declarado → ERROR
-                declaraciones.tipoAux = ERROR_TIPO;
-
-                cmp.me.error(
-                    Compilador.ERR_SEMANTICO,
-                    "[declaraciones] Identificador ya declarado: " + entrada
-                );
+                declaraciones.tipo = ERROR_TIPO;
             }
         }
-
-        lista_entradas_id.clear();  // limpiar la lista
     }
 
-    emparejar(";");
-
-    // ===== declaraciones1 =====
-    declaraciones(declaraciones1);
-
-    // =================== AS5 ===================
-    if (analizarSemantica) {
-        if (declaraciones.tipoAux.equals(VACIO)
-                && declaraciones1.tipo.equals(VACIO)) {
-
-            declaraciones.tipo = VACIO;
-
-        } else {
-            declaraciones.tipo = ERROR_TIPO;
-        }
-    }
-}
 
 
         private void tipo_estandar(Atributos te) {
@@ -282,9 +274,9 @@ public class SintacticoSemantico {
 
     }
 
-        private void proposiciones_optativas(Atributos propOpt) {
+    private void proposiciones_optativas(Atributos propOpt) {
 
-        // ======== CASO lista_proposiciones  =========
+        // CASO lista_proposiciones
         if (preAnalisis.equals("id")
             || preAnalisis.equals("begin")
             || preAnalisis.equals("if")
@@ -294,7 +286,7 @@ public class SintacticoSemantico {
 
             lista_proposiciones(lista);
 
-            // ---------- AS25 ----------
+            // ===== AS25 =====
             if (analizarSemantica) {
                 propOpt.tipo = lista.tipo;
             }
@@ -302,12 +294,13 @@ public class SintacticoSemantico {
             return;
         }
 
-        // ========= CASO ε ============
-        // AS26
+        // CASO ε
+        // ===== AS26 =====
         if (analizarSemantica) {
-            propOpt.tipo = "void";    // O así te lo pidieron textual
+            propOpt.tipo = VACIO;
         }
     }
+
 
 
 //--------------------------------------------------------------------------
@@ -317,7 +310,7 @@ public class SintacticoSemantico {
      * programa → program id ( input , output ) ; declaraciones
      * declaraciones_subprogramas proposicion_compuesta .
      */
-   private void programa(Atributos Programa) {
+private void programa(Atributos Programa) {
 
     Atributos declaracionesAtr = new Atributos();
     Atributos declaracionesSubAtr = new Atributos();
@@ -529,9 +522,9 @@ public class SintacticoSemantico {
     }
 
 
-    private void encab_subprograma(Atributos encab) {
+   private void encab_subprograma(Atributos encab) {
 
-    Linea_BE idActual = new Linea_BE();
+    Linea_BE idActual;
     Atributos tipoStd = new Atributos();
 
     // ---------- CASO function ----------
@@ -539,7 +532,7 @@ public class SintacticoSemantico {
 
         emparejar("function");
 
-        idActual = cmp.be.preAnalisis;   // Guardar el ID
+        idActual = cmp.be.preAnalisis;
         emparejar("id");
 
         // argumentos
@@ -552,20 +545,24 @@ public class SintacticoSemantico {
 
         emparejar(";");
 
-        // ======== AS17 =========
+        // ======== AS17 ========
         if (analizarSemantica) {
 
-            String tipoEncontrado = cmp.ts.buscaTipo(idActual.entrada);
+            int pos = cmp.ts.buscar(idActual.lexema);
+            String tipoExistente = (pos > 0) ? cmp.ts.buscaTipo(pos) : "";
 
-            if (tipoEncontrado == null || tipoEncontrado.equals("")) {
+            if (tipoExistente == null || tipoExistente.equals("")) {
 
-                // Registrar la función con su tipo de retorno
-                cmp.ts.anadeTipo(idActual.entrada, tipoStd.tipo);
+                if (pos <= 0) {
+                    Linea_TS nueva = new Linea_TS("id", idActual.lexema, "", "");
+                    pos = cmp.ts.insertar(nueva);
+                }
+
+                cmp.ts.anadeTipo(pos, tipoStd.tipo); // tipo de retorno
 
                 encab.tipo = VACIO;
 
             } else {
-
                 encab.tipo = ERROR_TIPO;
 
                 cmp.me.error(
@@ -590,20 +587,24 @@ public class SintacticoSemantico {
         // argumentos
         argumentos(new Atributos());
 
-        // ======== AS18 =========
+        // ======== AS18 ========
         if (analizarSemantica) {
 
-            String tipoEncontrado = cmp.ts.buscaTipo(idActual.entrada);
+            int pos = cmp.ts.buscar(idActual.lexema);
+            String tipoExistente = (pos > 0) ? cmp.ts.buscaTipo(pos) : "";
 
-            if (tipoEncontrado == null || tipoEncontrado.equals("")) {
+            if (tipoExistente == null || tipoExistente.equals("")) {
 
-                // Registrar el procedimiento
-                cmp.ts.anadeTipo(idActual.entrada, "procedure");
+                if (pos <= 0) {
+                    Linea_TS nueva = new Linea_TS("id", idActual.lexema, "", "");
+                    pos = cmp.ts.insertar(nueva);
+                }
+
+                cmp.ts.anadeTipo(pos, "procedure");
 
                 encab.tipo = VACIO;
 
             } else {
-
                 encab.tipo = ERROR_TIPO;
 
                 cmp.me.error(
@@ -617,7 +618,7 @@ public class SintacticoSemantico {
         return;
     }
 
-    // ----------- ERROR si no es ninguno ------------
+    // Error
     error("[encab_subprograma] Se esperaba 'function' o 'procedure'.");
 }
 
@@ -625,7 +626,7 @@ public class SintacticoSemantico {
 
         private void argumentos(Atributos argumentos) {
 
-        // ----------- CASO ( lista_parametros )  -----------   {19}
+        // ----- caso ( lista_parametros ) -----
         if (preAnalisis.equals("(")) {
 
             emparejar("(");
@@ -637,15 +638,15 @@ public class SintacticoSemantico {
 
             // ===== AS19 =====
             if (analizarSemantica) {
-                argumentos.tipo = lista.tipo;   // tipo devuelto por la lista
+                argumentos.tipo = lista.tipo;
             }
 
             return;
         }
 
-        // ----------- CASO ε  ------------------------------   {20}
+        // ----- caso ε -----
         if (analizarSemantica) {
-            argumentos.tipo = "void";     // AS20
+            argumentos.tipo = VACIO;   // AS20
         }
     }
 
@@ -687,7 +688,7 @@ public class SintacticoSemantico {
 
         private void _lista_parametros(Atributos lpPrima) {
 
-        // --------- CASO ; lista_identificadores : tipo lista_parametros' -----------
+        // ------ caso ; lista_identificadores : tipo lista_parametros' ------
         if (preAnalisis.equals(";")) {
 
             emparejar(";");
@@ -703,14 +704,11 @@ public class SintacticoSemantico {
             Atributos lpPrima2 = new Atributos();
             _lista_parametros(lpPrima2);
 
-            // ==================== AS22 =====================
+            // ===== AS22 =====
             if (analizarSemantica) {
 
-                if (!tipo.tipo.equals(ERROR_TIPO) &&
-                     lpPrima2.tipo.equals(VACIO)) {
-
+                if (!tipo.tipo.equals(ERROR_TIPO) && lpPrima2.tipo.equals(VACIO)) {
                     lpPrima.tipo = VACIO;
-
                 } else {
                     lpPrima.tipo = ERROR_TIPO;
                 }
@@ -719,11 +717,12 @@ public class SintacticoSemantico {
             return;
         }
 
-        // --------- CASO ε  (AS23) ----------
+        // ------ caso ε ------
         if (analizarSemantica) {
-            lpPrima.tipo = "void";   // AS23
+            lpPrima.tipo = VACIO;     // AS23
         }
     }
+
 
 
 private void proposicion_compuesta(Atributos propCompuesta) {
@@ -978,30 +977,36 @@ private void proposicion_compuesta(Atributos propCompuesta) {
     
         private void _declaraciones_subprogramas(Atributos dspPrima) {
 
-        // ======== caso ε ========  (AS15)
-        if (!preAnalisis.equals("function") && !preAnalisis.equals("procedure")) {
+        if (preAnalisis.equals("function") ||
+            preAnalisis.equals("procedure")) {
+
+            Atributos dsub = new Atributos();
+            Atributos dspPrima2 = new Atributos();
+
+            declaracion_subprograma(dsub);
+            emparejar(";");
+
+            _declaraciones_subprogramas(dspPrima2);
+
+            // ===== AS14 =====
             if (analizarSemantica) {
-                dspPrima.tipo = VACIO;
+
+                if (dsub.tipo.equals(VACIO) &&
+                    dspPrima2.tipo.equals(VACIO)) {
+
+                    dspPrima.tipo = VACIO;
+
+                } else {
+                    dspPrima.tipo = ERROR_TIPO;
+                }
             }
+
             return;
         }
 
-        // ===== declaracion_subprograma ; declaraciones_subprogramas' =====
-        Atributos dsub = new Atributos();
-        Atributos dspPrima2 = new Atributos();
-
-        declaracion_subprograma(dsub);
-        emparejar(";");
-
-        _declaraciones_subprogramas(dspPrima2);
-
-        // ======== AS14 ========
+        // ===== caso ε ===== AS15
         if (analizarSemantica) {
-            if (dsub.tipo.equals(VACIO) && dspPrima2.tipo.equals(VACIO)) {
-                dspPrima.tipo = VACIO;
-            } else {
-                dspPrima.tipo = ERROR_TIPO;
-            }
+            dspPrima.tipo = VACIO;
         }
     }
 
