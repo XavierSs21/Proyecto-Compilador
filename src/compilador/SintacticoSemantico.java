@@ -32,28 +32,25 @@
  */
 package compilador;
 
+import general.Linea_BE;
 import general.Linea_TS;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import javax.swing.JOptionPane;
 
+
 public class SintacticoSemantico {
+    
+    public static final String VACIO      = "vacio";
+    public static final String ERROR_TIPO = "error_tipo";
+    
+    private java.util.List<String> lista_entradas_id = new java.util.ArrayList<>();
+
 
     private Compilador cmp;
     private boolean analizarSemantica = false;
     private String preAnalisis;
-    
-    public static final String VACIO = "vacio";
-    public static final String ERROR_TIPO = "error_tipo";
-    public static final String INTEGER = "integer";
-    public static final String REAL = "real";
-    public static final String BOOLEAN = "boolean";
-    public static final String PROGRAM = "program";
-    public static final String CHAR = "char"; 
-    public static final String PROCEDURE = "procedure";
-
-    private ArrayList<Integer> lista_entradas_id = new ArrayList<>();
 
     //--------------------------------------------------------------------------
     // Constructor de la clase, recibe la referencia de la clase principal del 
@@ -370,10 +367,12 @@ private void lista_proposiciones(Atributos lista) {
 
     // accion semantica 2
     if (analizarSemantica) {
-        if (p.tipo.equals(ERROR_TIPO) || lp2.tipo.equals(ERROR_TIPO))
+
+        if (p.tipo.equals(ERROR_TIPO) || lp2.tipo.equals(ERROR_TIPO)) {
             lista.tipo = ERROR_TIPO;
-        else
+        } else {
             lista.tipo = VACIO;
+        }
     }
 }
 
@@ -387,7 +386,7 @@ private void _lista_proposiciones(Atributos lista2) {
         lista_proposiciones(lista2);
     }
     else {
-        lista2.tipo = VACIO; // ε
+        lista2.tipo = VACIO;  // ε
     }
 }
 
@@ -425,7 +424,8 @@ private void proposicion(Atributos prop) {
 
         // accion semantica 3
         if (analizarSemantica) {
-            if (!e.tipo.equals(BOOLEAN)) {
+
+            if (!e.tipo.equals("boolean")) {
                 cmp.me.error(cmp.ERR_SEMANTICO,
                     "La condición de IF debe ser booleana. Línea: " +
                     cmp.be.preAnalisis.numLinea);
@@ -451,9 +451,10 @@ private void proposicion(Atributos prop) {
         // accion semantica 4
         if (analizarSemantica) {
 
-            if (!e.tipo.equals(BOOLEAN)) {
+            if (!e.tipo.equals("boolean")) {
                 cmp.me.error(cmp.ERR_SEMANTICO,
-                    "La condición de WHILE debe ser booleana.");
+                    "La condición de WHILE debe ser booleana. Línea: " +
+                    cmp.be.preAnalisis.numLinea);
                 prop.tipo = ERROR_TIPO;
             }
             else if (p1.tipo.equals(ERROR_TIPO)) {
@@ -476,9 +477,9 @@ private void proposicion(Atributos prop) {
 // -------------------------------------------------------------
 private void _proposicion(Linea_BE id, Atributos prop) {
 
-    // ---------------------------------------
-    // variable opasig expresion
-    // ---------------------------------------
+    // ------------------------------ 
+    // variable opasig expresion 
+    // ------------------------------
     if (preAnalisis.equals("[") || preAnalisis.equals("opasig")) {
 
         Atributos var = new Atributos();
@@ -497,14 +498,14 @@ private void _proposicion(Linea_BE id, Atributos prop) {
             if (tipoVar.equals(ERROR_TIPO) || tipoExp.equals(ERROR_TIPO)) {
                 prop.tipo = ERROR_TIPO;
             }
-            else if (tipoVar.equals(INTEGER) && tipoExp.equals(INTEGER)) {
+            else if (tipoVar.equals("integer") && tipoExp.equals("integer")) {
                 prop.tipo = VACIO;
             }
-            else if (tipoVar.equals(REAL) &&
-                    (tipoExp.equals(INTEGER) || tipoExp.equals(REAL))) {
+            else if (tipoVar.equals("real") &&
+                    (tipoExp.equals("integer") || tipoExp.equals("real"))) {
                 prop.tipo = VACIO;
             }
-            else if (tipoVar.equals(BOOLEAN) && tipoExp.equals(BOOLEAN)) {
+            else if (tipoVar.equals("boolean") && tipoExp.equals("boolean")) {
                 prop.tipo = VACIO;
             }
             else {
@@ -517,9 +518,9 @@ private void _proposicion(Linea_BE id, Atributos prop) {
         return;
     }
 
-    // ---------------------------------------
-    // llamada a procedimiento
-    // ---------------------------------------
+    // ------------------------------ 
+    // llamada a procedimiento 
+    // ------------------------------
     if (preAnalisis.equals("(")) {
         proposicion_procedimiento(prop);
         return;
@@ -575,10 +576,12 @@ private void lista_expresiones(Atributos lista) {
 
     // accion semantica 7
     if (analizarSemantica) {
-        if (e.tipo.equals(ERROR_TIPO) || resto.tipo.equals(ERROR_TIPO))
+
+        if (e.tipo.equals(ERROR_TIPO) || resto.tipo.equals(ERROR_TIPO)) {
             lista.tipo = ERROR_TIPO;
-        else
+        } else {
             lista.tipo = VACIO;
+        }
     }
 }
 
