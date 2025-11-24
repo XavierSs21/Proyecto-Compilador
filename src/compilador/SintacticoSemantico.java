@@ -32,13 +32,21 @@
  */
 package compilador;
 
+import general.Linea_BE;
 import general.Linea_TS;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import javax.swing.JOptionPane;
 
+
 public class SintacticoSemantico {
+    
+    public static final String VACIO      = "vacio";
+    public static final String ERROR_TIPO = "error_tipo";
+    
+    private java.util.List<String> lista_entradas_id = new java.util.ArrayList<>();
+
 
     private Compilador cmp;
     private boolean analizarSemantica = false;
@@ -327,114 +335,269 @@ public class SintacticoSemantico {
     }
 
 //Procedure hechos por Yessenia Verónica Morones Dovalí
-    private void proposicion_compuesta() {
-        //proposicion_compuesta → begin proposiciones_optativas end
-        if (preAnalisis.equals("begin")) {
-            //begin proposiciones_optativas end
-            emparejar("begin");
-            proposiciones_optativas();
-            emparejar("end");
+    //acciones semanticas hechas por Daniela Lara
+private void proposicion_compuesta(Atributos prop) {
+    Atributos propsOpt = new Atributos();
+
+    if (!preAnalisis.equals("begin")) {
+        error("Se esperaba 'begin'. Línea: " + cmp.be.preAnalisis.numLinea);
+        prop.tipo = ERROR_TIPO;
+        return;
+    }
+
+    emparejar("begin");
+    proposiciones_optativas(propsOpt);
+    emparejar("end");
+
+    // accion semantica 1
+    if (analizarSemantica) {
+        prop.tipo = propsOpt.tipo.equals(ERROR_TIPO) ? ERROR_TIPO : VACIO;
+    }
+}
+
+// -------------------------------------------------------------
+// lista_proposiciones → proposicion lista_proposiciones’
+// -------------------------------------------------------------
+private void lista_proposiciones(Atributos lista) {
+    Atributos p = new Atributos();
+    Atributos lp2 = new Atributos();
+
+    proposicion(p);
+    _lista_proposiciones(lp2);
+
+    // accion semantica 2
+    if (analizarSemantica) {
+
+        if (p.tipo.equals(ERROR_TIPO) || lp2.tipo.equals(ERROR_TIPO)) {
+            lista.tipo = ERROR_TIPO;
         } else {
-            error("[proposicion_compuesta] Se esperaba 'begin'.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
+            lista.tipo = VACIO;
         }
     }
+}
 
-    private void lista_proposiciones() {
-        // lista_proposiciones → proposicion lista_proposiciones’
-        proposicion();
-        _lista_proposiciones();
+// -------------------------------------------------------------
+// lista_proposiciones' → ; lista_proposiciones | ε
+// -------------------------------------------------------------
+private void _lista_proposiciones(Atributos lista2) {
+
+    if (preAnalisis.equals(";")) {
+        emparejar(";");
+        lista_proposiciones(lista2);
+    }
+    else {
+        lista2.tipo = VACIO;  // ε
+    }
+}
+
+// -------------------------------------------------------------
+// proposicion
+// -------------------------------------------------------------
+private void proposicion(Atributos prop) {
+    Atributos e = new Atributos();
+    Atributos p1 = new Atributos();
+    Atributos p2 = new Atributos();
+
+    if (preAnalisis.equals("id")) {
+
+        Linea_BE id = cmp.be.preAnalisis;
+        emparejar("id");
+
+        _proposicion(id, prop);
+        return;
+    }
+    else if (preAnalisis.equals("begin")) {
+
+        proposicion_compuesta(prop);
+        return;
+    }
+    else if (preAnalisis.equals("if")) {
+
+        emparejar("if");
+        expresion(e);
+
+        emparejar("then");
+        proposicion(p1);
+
+        emparejar("else");
+        proposicion(p2);
+
+        // accion semantica 3
+        if (analizarSemantica) {
+
+            if (!e.tipo.equals("boolean")) {
+                cmp.me.error(cmp.ERR_SEMANTICO,
+                    "La condición de IF debe ser booleana. Línea: " +
+                    cmp.be.preAnalisis.numLinea);
+                prop.tipo = ERROR_TIPO;
+            }
+            else if (p1.tipo.equals(ERROR_TIPO) || p2.tipo.equals(ERROR_TIPO)) {
+                prop.tipo = ERROR_TIPO;
+            }
+            else {
+                prop.tipo = VACIO;
+            }
+        }
+        return;
+    }
+    else if (preAnalisis.equals("while")) {
+
+        emparejar("while");
+        expresion(e);
+
+        emparejar("do");
+        proposicion(p1);
+
+        // accion semantica 4
+        if (analizarSemantica) {
+
+            if (!e.tipo.equals("boolean")) {
+                cmp.me.error(cmp.ERR_SEMANTICO,
+                    "La condición de WHILE debe ser booleana. Línea: " +
+                    cmp.be.preAnalisis.numLinea);
+                prop.tipo = ERROR_TIPO;
+            }
+            else if (p1.tipo.equals(ERROR_TIPO)) {
+                prop.tipo = ERROR_TIPO;
+            }
+            else {
+                prop.tipo = VACIO;
+            }
+        }
+        return;
     }
 
-    private void proposicion() {
-        // proposicion → id proposicion’ 
-        //             | poposicion_compuesta
-        //             | if expresion then proposicion else proposicion
-        //             | while expresion do proposicion
-        if (preAnalisis.equals("id")) {
-            // proposicion → id proposicion’ 
-            emparejar("id");
-            _proposicion();
-        } else if (preAnalisis.equals("begin")) {
-            // proposicion → proposicion_compuesta
-            proposicion_compuesta();
-        } else if (preAnalisis.equals("if")) {
-            // proposicion → if expresion then proposicion else proposicion
-            emparejar("if");
-            expresion();
-            emparejar("then");
-            proposicion();
-            emparejar("else");
-            proposicion();
-        } else if (preAnalisis.equals("while")) {
-            // proposicion → while expresion do proposicion
-            emparejar("while");
-            expresion();
-            emparejar("do");
-            proposicion();
+    error("Se esperaba 'id', 'begin', 'if' o 'while'. Línea: " +
+          cmp.be.preAnalisis.numLinea);
+    prop.tipo = ERROR_TIPO;
+}
+
+// -------------------------------------------------------------
+// proposicion'  
+// -------------------------------------------------------------
+private void _proposicion(Linea_BE id, Atributos prop) {
+
+    // ------------------------------ 
+    // variable opasig expresion 
+    // ------------------------------
+    if (preAnalisis.equals("[") || preAnalisis.equals("opasig")) {
+
+        Atributos var = new Atributos();
+        Atributos e = new Atributos();
+
+        variable(id, var);
+        String tipoVar = var.tipo;
+
+        emparejar("opasig");
+        expresion(e);
+        String tipoExp = e.tipo;
+
+        // accion semantica 5
+        if (analizarSemantica) {
+
+            if (tipoVar.equals(ERROR_TIPO) || tipoExp.equals(ERROR_TIPO)) {
+                prop.tipo = ERROR_TIPO;
+            }
+            else if (tipoVar.equals("integer") && tipoExp.equals("integer")) {
+                prop.tipo = VACIO;
+            }
+            else if (tipoVar.equals("real") &&
+                    (tipoExp.equals("integer") || tipoExp.equals("real"))) {
+                prop.tipo = VACIO;
+            }
+            else if (tipoVar.equals("boolean") && tipoExp.equals("boolean")) {
+                prop.tipo = VACIO;
+            }
+            else {
+                cmp.me.error(cmp.ERR_SEMANTICO,
+                    "Tipos incompatibles en asignación. Línea: " +
+                    cmp.be.preAnalisis.numLinea);
+                prop.tipo = ERROR_TIPO;
+            }
+        }
+        return;
+    }
+
+    // ------------------------------ 
+    // llamada a procedimiento 
+    // ------------------------------
+    if (preAnalisis.equals("(")) {
+        proposicion_procedimiento(prop);
+        return;
+    }
+
+    // ε
+    prop.tipo = VACIO;
+}
+
+// -------------------------------------------------------------
+// proposicion_procedimiento
+// -------------------------------------------------------------
+private void proposicion_procedimiento(Atributos prop) {
+    Atributos args = new Atributos();
+
+    _proposicion_procedimiento(args);
+
+    // accion semantica 6
+    if (analizarSemantica) {
+        prop.tipo = args.tipo.equals(ERROR_TIPO) ? ERROR_TIPO : VACIO;
+    }
+}
+
+// -------------------------------------------------------------
+// proposicion_procedimiento'
+// -------------------------------------------------------------
+private void _proposicion_procedimiento(Atributos prop) {
+
+    if (preAnalisis.equals("(")) {
+        emparejar("(");
+
+        Atributos lista = new Atributos();
+        lista_expresiones(lista);
+
+        emparejar(")");
+
+        prop.tipo = lista.tipo;
+    }
+    else {
+        prop.tipo = VACIO; // ε
+    }
+}
+
+// -------------------------------------------------------------
+// lista_expresiones
+// -------------------------------------------------------------
+private void lista_expresiones(Atributos lista) {
+    Atributos e = new Atributos();
+    Atributos resto = new Atributos();
+
+    expresion(e);
+    _lista_expresiones(resto);
+
+    // accion semantica 7
+    if (analizarSemantica) {
+
+        if (e.tipo.equals(ERROR_TIPO) || resto.tipo.equals(ERROR_TIPO)) {
+            lista.tipo = ERROR_TIPO;
         } else {
-            error("[proposicion] Se esperaba 'id', 'begin', 'if' o 'while'.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
+            lista.tipo = VACIO;
         }
     }
+}
 
-    private void _proposicion() {
-        // proposicion’ → variable opasig expresion
-        //              | opasig Expresion
-        //              | Proposicion_Procedimiento
-        //              | ε
-        if (preAnalisis.equals("[")) {
-            //proposicion’ → variable opasig expresion
-            variable();
-            emparejar("opasig");
-            expresion();
-        } else if (preAnalisis.equals("opasig")) {
-            //proposicion’ → opasig expresion
-            emparejar("opasig");
-            expresion();
-        } else if (preAnalisis.equals("(")) {
-            //proposicion’ → proposicion_procedimiento
-            proposicion_procedimiento();
-        } else {
-            //proposicion’ → ε
-        }
-    }
+// -------------------------------------------------------------
+// lista_expresiones'
+// -------------------------------------------------------------
+private void _lista_expresiones(Atributos lista2) {
 
-    private void proposicion_procedimiento() {
-        //proposicion_procedimiento → proposicion_procedimiento’
-        _proposicion_procedimiento();
+    if (preAnalisis.equals(",")) {
+        emparejar(",");
+        lista_expresiones(lista2);
     }
-
-    private void _proposicion_procedimiento() {
-        //proposicion_procedimiento’ → ( lista_expresiones )  | ϵ
-        if (preAnalisis.equals("(")) {
-            emparejar("(");
-            lista_expresiones();
-            emparejar(")");
-        } else {
-            //proposicion_procedimiento’ → ϵ
-        }
+    else {
+        lista2.tipo = VACIO; // ε
     }
-
-    private void lista_expresiones() {
-        // lista_expresiones → expresion lista_expresiones´
-        if (preAnalisis.equals("id") || preAnalisis.equals("num") || preAnalisis.equals("(")) {
-            // expresion lista_expresiones´
-            expresion();
-            _lista_expresiones();
-        } else {
-            error("[lista_expresiones] Se esperaba expresión.\nNo. Línea: " + cmp.be.preAnalisis.numLinea);
-        }
-    }
-
-    private void _lista_expresiones() {
-        // lista_expresiones’ → , lista_expresiones | ε
-        if (preAnalisis.equals(",")) {
-            // , lista_expresiones
-            emparejar(",");
-            lista_expresiones();
-        } else {
-            // ε
-        }
-    }
+}
 
 //--------------------------------------------------------------------------
 //--------------------------------------------------------------------------
